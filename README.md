@@ -1794,3 +1794,12 @@ src/
   types/                        # shared types (API envelope)
 tests/unit/                     # vitest unit tests
 ```
+
+## Frontend Architecture
+
+- **Data Layer:** Client-side data fetching uses `SWR` or `React Query` patterns, abstracted through `api-client.ts`. Server-side data uses Next.js 16 cache strategies with tag invalidation (`revalidateTag`). All API calls are enveloped in a robust `ApiResponse` type.
+- **Design System ("Campus-Tech"):** Built using Tailwind CSS v4 variables with a custom deep indigo/emerald palette. Modern UI with glassmorphism, rounded-2xl cards, mesh gradient hero backgrounds, and a refined `Plus Jakarta Sans` typography. Includes excellent automatic/persisted dark mode and light mode without flash.
+- **Component Library (`src/components/ui`):** Reusable and modular components adhering to accessibility and WCAG AA contrast standards.
+  - Developed components: Button, Card, Input, OtpInput, ThemeProvider, ChatbotWidget (lazy-loaded).
+  - Planned extensions: Textarea, Select, Checkbox, Modal/Dialog, DataTable, Toast wrapper (react-hot-toast).
+- **SEO & Performance:** A massive 500+ dynamic SEO keyword list (`src/config/seo-keywords.ts`) mapped across the platform. Comprehensive Open Graph metadata mapping, canonical URLs, and Next.js `metadata` API integration. Performance ensured by `next/font`, `next/dynamic`, lazy loaded assets, optimized First Load JS, and strict client component scoping.
