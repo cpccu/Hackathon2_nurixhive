@@ -62,6 +62,19 @@ export class PayloadTooLargeError extends AppError {
   }
 }
 
+export class UnsupportedMediaTypeError extends AppError {
+  constructor(message = "Content-Type must be application/json.") {
+    super(415, "UNSUPPORTED_MEDIA_TYPE", message);
+  }
+}
+
+/** An upstream provider (e.g. email) failed; the operation is safe to retry. */
+export class ServiceUnavailableError extends AppError {
+  constructor(code: string, message: string) {
+    super(503, code, message);
+  }
+}
+
 export class RateLimitError extends AppError {
   constructor(
     public readonly retryAfterSeconds: number,

@@ -82,12 +82,13 @@ The full tag map is in README → *Caching tag map*. `src/lib/cache-tags.ts` is 
 ## 3. Authentication and authorization
 
 - **Passwords:** bcryptjs, cost 12. Emails are stored lower-cased.
-- **Sign-up:** the account is created with `isEmailVerified = false`. A 6-digit OTP is sent through Brevo, and only its **hash** is stored in `EmailOtp` together with `expiresAt` (10 min), an attempts counter (max 5) and `consumedAt`. Password reset uses the same table with `purpose = PASSWORD_RESET`.
+- **Sign-up:** the account is created with `isEmailVerified = false`. A 6-digit OTP (`crypto.randomInt`) is sent through Brevo. Only `HMAC-SHA256(JWT_SECRET, purpose:userId:code)` is stored in `EmailOtp`, together with `expiresAt` (10 min), an attempts counter (max 5) and `consumedAt`. A 60 s resend cooldown applies. Earlier codes are invalidated only after the new one is delivered, and an undelivered code is deleted, so a retry is never blocked. Password reset uses the same table with `purpose = PASSWORD_RESET`.
 - **Session:** a JWT signed with `jose` (HS256, `JWT_SECRET`, expiry `JWT_EXPIRES_IN`). Claims: `sub` (user id), `role` and `tv` (token version). It is stored in a cookie with `httpOnly`, `Secure` in production, `SameSite=Lax` and `Path=/`.
 - **Revocation:** logout-everywhere, password change and role change increment `User.tokenVersion`. Tokens whose `tv` does not match are rejected.
 - **Brute force:** `failedLoginCount` and `lockedUntil` on User, plus DB-backed rate limits (see below).
 - **Roles:** `USER < MODERATOR < CLUB_ADMIN < ADMIN < SUPER_ADMIN`. Club-scoped admin rights come from `ClubMember.role = ADMIN`. Guards live in `src/server/middleware` and are enforced in services too, not only in the UI.
-- **CSRF:** `SameSite=Lax` plus an **Origin check** on every non-GET API request. The Origin must equal `NEXT_PUBLIC_APP_URL`.
+- **CSRF:** `SameSite=Lax` plus an **Origin check** on every non-GET API request. The Origin (or Referer) must equal the `NEXT_PUBLIC_APP_URL` origin or the origin the request was addressed to.
+- **Route protection:** `src/proxy.ts` (Next 16 renamed `middleware` to `proxy`) only verifies the JWT, for fast redirects. Route handlers call `requireAuth` / `requireRole` / `requirePermission` (`src/server/middleware/auth.ts`), which re-check the database once per request.
 - **Audit:** every admin/moderator mutation writes an `AuditLog` row (actor, action, entity, metadata, IP).
 
 ## 4. Rate limiting and bot protection
