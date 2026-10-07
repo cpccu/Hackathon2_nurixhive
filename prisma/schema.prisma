@@ -192,6 +192,17 @@ enum UploadKind {
   PDF
 }
 
+enum FollowTargetType {
+  DEPARTMENT
+  COURSE
+  CLUB
+}
+
+enum ChatFeedback {
+  HELPFUL
+  NOT_HELPFUL
+}
+
 // ───────────────────────────── Identity ─────────────────────────────
 
 model User {
@@ -240,6 +251,7 @@ model User {
   complaintsAssigned    Complaint[]         @relation("ComplaintAssignee")
   complaintUpdates      ComplaintUpdate[]
   notifications         Notification[]
+  follows               Follow[]
   chatSessions          ChatSession[]
   chatMessages          ChatMessage[]
   auditLogs             AuditLog[]
@@ -357,6 +369,8 @@ model Event {
   status               EventStatus @default(DRAFT)
   /// Denormalized counter of active (non-cancelled) registrations.
   registrationCount    Int         @default(0)
+  /// Set once the "starts tomorrow" reminder has gone out (idempotent cron).
+  reminderSentAt       DateTime?
   createdById          String
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
@@ -478,6 +492,8 @@ model KnowledgeEntry {
   sourceType   KnowledgeSourceType @default(MANUAL)
   sourceRefId  String?
   isPublished  Boolean             @default(true)
+  /// Demo/seed content that an admin must verify before relying on it.
+  isSample     Boolean             @default(false)
   viewCount    Int                 @default(0)
   createdById  String?
   /// Generated column (question A, keywords A, answer B) - see raw SQL migration.
@@ -497,6 +513,8 @@ model KnowledgeEntry {
 
 model ChatSession {
   id            String   @id @default(cuid())
+  /// Unguessable client-facing session id (anonymous sessions are addressed only by this).
+  token         String   @unique @db.VarChar(64)
   userId        String?
   messageCount  Int      @default(0)
   lastMessageAt DateTime @default(now())
@@ -519,6 +537,10 @@ model ChatMessage {
   confidence      Float?
   /// false when the bot could not answer - feeds the "unanswered questions" admin view.
   isAnswered      Boolean  @default(true)
+  /// Deterministic intent that produced the answer (e.g. NEXT_BUS), null for KB retrieval.
+  intent          String?  @db.VarChar(40)
+  feedback        ChatFeedback?
+  feedbackAt      DateTime?
   createdAt       DateTime @default(now())
 
   session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
@@ -526,6 +548,7 @@ model ChatMessage {
 
   @@index([sessionId, createdAt])
   @@index([isAnswered, createdAt])
+  @@index([feedback, createdAt])
 }
 
 // ───────────────────────────── Transport ─────────────────────────────
@@ -746,6 +769,29 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([actorId, createdAt])
   @@index([action, createdAt])
+}
+
+/// Users following a department, course or club (drives notice fan-out).
+model Follow {
+  id         String           @id @default(cuid())
+  userId     String
+  targetType FollowTargetType
+  targetId   String
+  createdAt  DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, targetType, targetId])
+  @@index([targetType, targetId])
+}
+
+/// Aggregated global-search terms for analytics (one row per normalised term).
+model SearchTerm {
+  term           String   @id @db.VarChar(100)
+  count          Int      @default(1)
+  lastSearchedAt DateTime @default(now())
+
+  @@index([count])
 }
 
 /// Fixed-window counters for DB-backed rate limiting.

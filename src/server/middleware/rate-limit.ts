@@ -21,6 +21,11 @@ export const RATE_LIMITS = {
   write: { limit: 60, windowMs: MINUTE },
   /** File uploads per IP (CPU-heavy compression). */
   upload: { limit: 20, windowMs: 10 * MINUTE },
+  /** Chatbot messages per IP: stricter for anonymous visitors. */
+  chatAnonymous: { limit: 10, windowMs: MINUTE },
+  chatUser: { limit: 30, windowMs: MINUTE },
+  /** Ticket tracking by ticket+email (anti-enumeration). */
+  ticketTrack: { limit: 10, windowMs: 15 * MINUTE },
   /** Search and chatbot per IP. */
   search: { limit: 30, windowMs: MINUTE },
   /** Public cached reads per IP (in-memory). */

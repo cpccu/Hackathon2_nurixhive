@@ -93,7 +93,8 @@ export interface VerifiedUpload {
 }
 
 interface UploadExpectation {
-  kind: UploadKind;
+  /** Accepted kind(s), e.g. "IMAGE" or ["PDF", "IMAGE"] for notice attachments. */
+  kind: UploadKind | UploadKind[];
   /** Request field reported in validation errors. */
   field?: string;
   /** When set, the upload must belong to this user. */
@@ -118,10 +119,15 @@ export async function verifyUpload(url: string, expected: UploadExpectation, key
   const valid =
     record !== null &&
     record.url === url &&
-    record.kind === expected.kind &&
+    (Array.isArray(expected.kind) ? expected.kind.includes(record.kind) : record.kind === expected.kind) &&
     (expected.ownerId === undefined || record.uploadedById === expected.ownerId);
   if (!valid) throw new ValidationError(undefined, [{ path, message: "Unknown or foreign upload." }]);
   return { key: record.key, url: record.url, size: record.size, mimeType: record.mimeType };
+}
+
+/** Verifies several image URLs (lost & found photos, complaint attachments) owned by the user. */
+export async function verifyImageUploads(urls: readonly string[], field: string, ownerId: string): Promise<void> {
+  await Promise.all(urls.map((url) => verifyUpload(url, { kind: "IMAGE", ownerId, field })));
 }
 
 /**

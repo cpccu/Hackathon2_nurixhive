@@ -169,6 +169,8 @@ async function main(): Promise<void> {
 
     const { seedContent } = await import("./seed-content");
     await seedContent(prisma, logger);
+    const { seedCampusContent } = await import("./seed-campus");
+    await seedCampusContent(prisma, logger);
 
     logger.info("Seed completed");
   } finally {

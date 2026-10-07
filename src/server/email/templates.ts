@@ -157,6 +157,58 @@ export function complaintReceivedEmail(input: { name: string; ticketNo: string; 
   });
 }
 
+const COMPLAINT_STATUS_LABEL = {
+  RECEIVED: "Received",
+  IN_REVIEW: "In review",
+  RESOLVED: "Resolved",
+  REJECTED: "Closed - not actionable",
+} as const;
+
+export function complaintUpdateEmail(input: {
+  name: string;
+  ticketNo: string;
+  status: keyof typeof COMPLAINT_STATUS_LABEL;
+  note: string | null;
+}): RenderedEmail {
+  return renderEmail({
+    subject: `Update on ${input.ticketNo}: ${COMPLAINT_STATUS_LABEL[input.status]}`,
+    preheader: `Your complaint ${input.ticketNo} has an update.`,
+    heading: "Your complaint was updated",
+    blocks: [
+      { kind: "paragraph", text: `Hi ${input.name}, there is an update on your complaint.` },
+      { kind: "details", rows: [["Ticket", input.ticketNo], ["Status", COMPLAINT_STATUS_LABEL[input.status]]] },
+      ...(input.note ? [{ kind: "paragraph" as const, text: input.note }] : []),
+      { kind: "button", label: "Track your complaint", url: appUrl(`/complaints/${encodeURIComponent(input.ticketNo)}`) },
+    ],
+  });
+}
+
+export function claimReceivedEmail(input: { name: string; itemTitle: string; itemId: string }): RenderedEmail {
+  return renderEmail({
+    subject: `New claim on "${input.itemTitle}"`,
+    preheader: "Someone responded to your Lost & Found post.",
+    heading: "Someone responded to your post",
+    blocks: [
+      { kind: "paragraph", text: `Hi ${input.name}, a student submitted a claim on "${input.itemTitle}". Review their message and approve it only if the details match.` },
+      { kind: "note", text: "Never share passwords or pay money to get an item back. Meet in a public place on campus or at the admin office." },
+      { kind: "button", label: "Review claim", url: appUrl(`/lost-found/${encodeURIComponent(input.itemId)}`) },
+    ],
+  });
+}
+
+export function eventReminderEmail(input: { eventTitle: string; eventSlug: string; startAt: Date; venue: string }): RenderedEmail {
+  return renderEmail({
+    subject: `Tomorrow: ${input.eventTitle}`,
+    preheader: `${input.eventTitle} starts tomorrow.`,
+    heading: "See you tomorrow! ⏰",
+    blocks: [
+      { kind: "paragraph", text: `A reminder that "${input.eventTitle}" starts tomorrow. Keep your QR ticket ready for check-in.` },
+      { kind: "details", rows: [["When", formatDateTime(input.startAt)], ["Venue", input.venue]] },
+      { kind: "button", label: "View event", url: appUrl(`/events/${encodeURIComponent(input.eventSlug)}`) },
+    ],
+  });
+}
+
 const CLAIM_STATUS_COPY = {
   APPROVED: "Your claim was approved. Please collect the item from the admin office with your student ID.",
   REJECTED: "Your claim could not be verified. If you believe this is a mistake, contact the admin office.",

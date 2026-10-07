@@ -2,7 +2,7 @@
 
 One hub for campus life at City University (Bangladesh). Events and clubs, academic resources, notices, bus schedules, lost and found, complaints, and an "Ask CampusOS" assistant all live in one fast, mobile-first web app instead of being scattered across Facebook groups, Google Forms and notice boards.
 
-> **Status:** the backend is in progress. Done so far: the foundation, auth and security, the upload system, Module 1 (Clubs & Events) and Module 2 (Resource Hub). The UI comes in later tasks.
+> **Status:** the backend is complete: auth and security, uploads, Module 1 (Clubs & Events), Module 2 (Resource Hub), Module 3 (Smart Helpdesk & grounded chatbot), Module 4 (Lost & Found + Complaints), notices, forms, bus schedule, global search, notifications and admin analytics. The UI comes in later tasks.
 
 ---
 
@@ -84,7 +84,7 @@ Copy `.env.example` to `.env` and fill it in. `src/lib/env.ts` validates every v
 | `UPLOADTHING_TOKEN` | yes | UploadThing server token |
 | `REVALIDATE_SECRET` | yes | ≥ 16 characters, guards the manual revalidation endpoint |
 | `CRON_SECRET` | yes | ≥ 16 characters, guards cron endpoints |
-| `LLM_API_KEY` | no | Enables grounded LLM answers in the chatbot |
+| `LLM_API_KEY` | no | Anthropic API key. Turns on an optional rephrasing layer (Claude, 3 s budget) over knowledge-base answers. The chatbot is fully functional without it. |
 | `TURNSTILE_SECRET_KEY` / `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | no | Cloudflare Turnstile bot protection |
 | `ADMIN1..4_EMAIL` / `ADMIN1..4_PASSWORD` | seed only | Admin accounts created by the seed |
 | `DEMO_USER_EMAIL` / `DEMO_USER_PASSWORD` | seed only | Demo student account created by the seed |
@@ -112,6 +112,7 @@ npm run dev                 # http://localhost:3000
 | `db:seed` | Run `prisma/seed.ts` (idempotent) |
 | `test` / `test:watch` | Vitest unit tests (`tests/unit`, fake env, no DB or network) |
 | `uploads:cleanup` | Lists orphaned uploads older than 24 h; add `-- --apply` to delete them from UploadThing and the DB |
+| `reminders:send` | Sends "event starts tomorrow" reminders (same job as `GET /api/cron/reminders`; idempotent) |
 | `db:studio` | Prisma Studio |
 
 > **Prisma 7 note:** connection URLs are not in `schema.prisma`. The CLI reads `DIRECT_URL` from `prisma.config.ts`, and the app connects with the pooled `DATABASE_URL` in `src/lib/prisma.ts`.
@@ -139,6 +140,12 @@ Run `npm run db:seed`. It is idempotent and safe to re-run. It creates:
   - 60 resources across all departments: 55 approved, 4 pending (in the moderation queue) and 1 rejected.
 - **Sample files are clearly flagged.** Every seed resource has `isSample: true` and a `sample-resource-NNN` key, and points at one real generated PDF (`campusos-sample-resource.pdf`). The seed uploads that PDF to UploadThing once and tracks it in `UploadedFile`. If the upload fails, a flagged placeholder URL is used instead.
 - Event dates and the counters (`registrationCount`, sample `downloadCount`) are refreshed on each run.
+- **Helpdesk & campus content** (`prisma/seed-campus.ts`):
+  - **82 knowledge-base entries**, all `isSample: true` (*sample data that admins must verify*; the chatbot labels answers drawn from them). Editing an entry clears the flag.
+  - 6 bus routes to the Khagan/Birulia campus with Sat–Thu trips, and their auto-generated KB entries.
+  - 8 notices (two EXAM notices, auto-synced into the KB, and two class cancellations).
+  - 5 open forms with **placeholder `example.com` URLs**, to be replaced with real Google Form links.
+  - 6 lost & found posts by the demo students.
 - Credentials are never committed to the repository.
 
 ## API reference
@@ -1108,6 +1115,583 @@ Errors: 400 (a reject without `reason`, a bad field, or a course outside the dep
 
 Errors: 400 `VALIDATION_ERROR`; 403 (MODERATOR and below); 404; 409 (a duplicate code, or still in use). Every mutation revalidates `departments`, `courses`, `resources`, `notices`, `department:{id}` and `course:{id}`.
 
+### Module 3: Smart helpdesk & chatbot
+
+#### Chatbot rules
+
+- **Grounded only.** The assistant answers **only from CampusOS data**: either deterministic intents built from live tables, or the knowledge base. It never invents information.
+- **Pipeline:**
+  1. Normalize the message: lower-case, strip punctuation, and map English, Banglish and Bangla vocabulary to canonical terms using `src/config/chatbot-synonyms.ts`. For example "porikkha", "পরীক্ষা" and "final" all become `exam`.
+  2. Detect a **structured intent**: next bus (route/stop, Asia/Dhaka time), today's buses, open forms, events in the next 7 days, or the latest class cancellations. These are answered from `BusTrip`, `FormLink`, `Event` and `Notice` with `confidence: 1`.
+  3. Otherwise, **retrieve** the top 8 KB entries with Postgres full-text search (`ts_rank_cd`), `pg_trgm` `word_similarity` and keyword-array overlap. All SQL is parameterized, and user text is never concatenated into SQL.
+  4. **Confidence** blends those signals with *coverage*, meaning the share of the question's meaning units the entry actually addresses. An entry must cover at least a third of them, and question form (when/where/how) adds a small ranking bonus.
+     - **HIGH (≥ 0.50):** the stored answer, its sources and page links.
+     - **MEDIUM (≥ 0.30):** the closest answer plus "Did you mean…" suggestions.
+     - **LOW:** the fixed reply "I don't have verified information about this yet" plus the 3 closest FAQs. The question is logged for admins.
+  5. **Optional LLM** (only if `LLM_API_KEY` is set; Claude via `@anthropic-ai/sdk`): for HIGH or MEDIUM only, the retrieved entries and the question are sent with a strict "answer only from the context, otherwise reply NO_ANSWER" system prompt, a 3 s timeout and no retries. Any failure, refusal, empty or `NO_ANSWER` output falls back to the template answer. The bot is fully functional without a key. Server-side refusal fallback (`fallbacks: "default"`) is enabled.
+- **Sample data:** answers from sample entries end with *"Note: this answer is from sample data and must be verified with the relevant office."*
+
+#### `GET /api/helpdesk/entries`
+
+Lists published FAQ entries.
+
+- **Auth:** none. **Cached:** tag `kb`.
+- **Query:** `category?` (`BUS|RULES|EXAM|ADMISSION|GENERAL|FAQ`), `q?`, `cursor?`, `limit?`. Without `q`, entries are sorted by category then question and cursor-paginated. With `q`, the chatbot's ranked retrieval returns the top 20 (`nextCursor: null`).
+- **Success (200):** `sourceType` is `MANUAL|IMPORT|BUS_ROUTE|NOTICE|…`. `BUS_ROUTE` and `NOTICE` entries are auto-synced.
+
+  ```json
+  { "success": true, "data": [ { "id": "…", "category": "BUS", "question": "Are bus timings different during exams?", "answer": "…", "keywords": ["bus", "exam"], "isSample": true, "sourceType": "MANUAL", "updatedAt": "…" } ], "meta": { "limit": 20, "nextCursor": "…" } }
+  ```
+
+- **Errors:** 400 `VALIDATION_ERROR`, 429.
+
+#### `GET /api/helpdesk/categories`
+
+Category counts for the FAQ page.
+
+- **Auth:** none. **Cached:** tag `kb`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": [ { "category": "BUS", "count": 16 }, { "category": "EXAM", "count": 16 } ] }
+  ```
+
+#### `GET /api/helpdesk/entries/{id}`
+
+One published entry. `viewCount` is incremented after the response (via `after()`) and is not part of the payload.
+
+- **Auth:** none. **Cached:** tags `kb` and `kb:{id}`.
+- **Success (200):** the entry object, as above.
+- **Errors:** 400, 404.
+
+#### `POST /api/chatbot/message`
+
+Asks the campus assistant.
+
+- **Auth:** optional. Anonymous visitors are limited to **10/min per IP**; signed-in users to **30/min**. **Headers:** `Origin`, `Content-Type: application/json`.
+- **Body:** omit `sessionId` to start a session. The returned `sessionId` is an unguessable 32-character token. `message` is at most 500 characters.
+
+  ```json
+  { "sessionId": "abC8sI…", "message": "mirpur er porer bus kokhon?" }
+  ```
+
+- **Success (200), intent answer:**
+
+  ```json
+  { "success": true, "data": { "sessionId": "abC8sI…", "messageId": "cmuy…", "answer": "Next R2 Mirpur buses at Mirpur 10:\n• 07:15 tomorrow - to campus\n…", "level": "HIGH", "confidence": 1, "intent": "NEXT_BUS", "answeredBy": "intent", "sources": [ { "id": "/bus?route=R2", "title": "Route R2 - Mirpur", "category": "GENERAL", "link": "/bus?route=R2" } ], "suggestions": [] } }
+  ```
+
+- **Success (200), out of scope:**
+
+  ```json
+  { "success": true, "data": { "answer": "I don't have verified information about this yet. I've logged your question so the CampusOS team can add an answer.", "level": "LOW", "confidence": 0.09, "intent": null, "answeredBy": "fallback", "sources": [], "suggestions": [ { "id": "…", "question": "What is the minimum class attendance requirement?", "link": "/helpdesk/…" } ] } }
+  ```
+
+  `answeredBy` is one of `intent`, `knowledge_base`, `llm` or `fallback`.
+- **Errors:**
+
+  | Status | Code | When |
+  | --- | --- | --- |
+  | 400 | `VALIDATION_ERROR` | Empty, over 500 characters, or a bad session id |
+  | 403 | `FORBIDDEN` | Bad Origin |
+  | 404 | `NOT_FOUND` | Session not found or not yours |
+  | 429 | `RATE_LIMITED` | Rate limit hit |
+
+#### `GET /api/chatbot/sessions/{sessionId}`
+
+The last 50 messages of a session, oldest first.
+
+- **Auth:** the session's owner. Anonymous sessions are reachable only through their unguessable token, and a signed-in user's session is never visible to anyone else (they get 404).
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "sessionId": "…", "messages": [ { "id": "…", "role": "USER", "content": "Is the university bus free for students?", "confidence": null, "intent": null, "feedback": null, "createdAt": "…" } ] } }
+  ```
+
+- **Errors:** 400 (bad token), 404.
+
+#### `POST /api/chatbot/messages/{messageId}/feedback`
+
+Thumbs up or down on an assistant message.
+
+- **Auth:** the session's owner. **Headers:** `Origin`.
+- **Body:**
+
+  ```json
+  { "sessionId": "…", "helpful": false }
+  ```
+
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "messageId": "…", "feedback": "NOT_HELPFUL" } }
+  ```
+
+- **Errors:** 400, 404 (not an assistant message in that session).
+
+#### `GET /api/admin/chatbot/unanswered`
+
+Knowledge gaps for admins to fill. Requires `chat:analytics` (ADMIN+).
+
+- **Query:** `type=unanswered` (default; questions the bot refused) or `type=unhelpful` (thumbs-down answers, paired with their question), `cursor?`, `limit?`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": [ { "id": "…", "question": "What is the capital of Mars?", "answer": null, "confidence": null, "createdAt": "…" } ], "meta": { "limit": 20, "nextCursor": null } }
+  ```
+
+- **Errors:** 401, 403.
+
+#### Admin: knowledge base (`kb:manage`, held by ADMIN and SUPER_ADMIN)
+
+All mutations are audited and revalidate `kb`. Editing an entry's question or answer clears its `isSample` flag, because an admin has now verified it.
+
+| Method & path | Body / query | Success |
+| --- | --- | --- |
+| `GET /api/admin/helpdesk/entries` | `category?`, `published?`, `q?`, `cursor?`, `limit?` | 200: all entries, including unpublished ones, `viewCount` and the sample flag |
+| `POST /api/admin/helpdesk/entries` | `{ "category": "GENERAL", "question": "Where is the IT Help Desk?", "answer": "…", "keywords": ["it","help"], "isPublished": true }` | 201: the entry |
+| `PATCH /api/admin/helpdesk/entries/{id}` | Any field. `{ "isPublished": false }` unpublishes and `true` publishes. | 200 |
+| `DELETE /api/admin/helpdesk/entries/{id}` | none | 200: `{ "message": "Entry deleted.", "id": "…" }` |
+| `POST /api/admin/helpdesk/import` | `{ "entries": [ {…create body…} ], "skipDuplicates": true }` (max 500 entries, 1 MB) | 201: `{ "created": 12, "skipped": ["Existing question?"] }`. With `skipDuplicates: false`, duplicates return 409 with `details.duplicates`. |
+
+Errors: 400, 401, 403, 404, 409.
+
+**Auto-sync.** Generated knowledge-base entries keep the chatbot current:
+- Creating, updating or deleting a bus route or trip regenerates that route's entry (for example *"When does the Dhanmondi bus (route R1) run?"*).
+- Creating, updating or deleting an `EXAM` notice creates, updates or removes its entry.
+
+### Bus schedule
+
+#### `GET /api/bus/routes`
+
+All active routes with their stops (`[{ name, offsetMinutes }]` in to-campus order) and active trips.
+
+- **Auth:** none. **Cached:** tag `buses`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": [ { "id": "…", "code": "R1", "name": "Dhanmondi", "stops": [ { "name": "Dhanmondi 27", "offsetMinutes": 0 }, { "name": "City University Campus (Khagan, Birulia)", "offsetMinutes": 75 } ], "notes": "…", "trips": [ { "id": "…", "departureTime": "07:00", "direction": "TO_CAMPUS", "daysOfWeek": [0,1,2,3,4,6], "isActive": true } ] } ] }
+  ```
+
+#### `GET /api/bus/routes/{code}`
+
+One route plus `nextDepartures`, computed live in Asia/Dhaka time.
+
+- **Auth:** none. **Cached:** tags `buses` and `bus:{id}`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "code": "R1", "name": "Dhanmondi", "stops": [], "trips": [], "nextDepartures": [ { "tripId": "…", "direction": "TO_CAMPUS", "stop": "Dhanmondi 27", "time": "07:00", "at": "2026-10-08T01:00:00.000Z", "dayOffset": 0, "minutesUntil": 411 } ] } }
+  ```
+
+- **Errors:** 400, 404.
+
+#### `GET /api/bus/next?route=R2&stop=gabtoli&direction=FROM_CAMPUS&limit=3`
+
+Next departures at a stop.
+
+- **Auth:** none. **Behaviour:** `stop` is matched case-insensitively. A `FROM_CAMPUS` trip reaches the stop at departure + (journey − stop offset). Fridays and holidays roll over to the next service day.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "route": { "code": "R2", "name": "Mirpur" }, "stop": "Gabtoli", "now": "…", "departures": [ { "time": "14:05", "direction": "FROM_CAMPUS", "dayOffset": 0, "minutesUntil": 845, "at": "2026-10-08T08:05:00.000Z" } ] } }
+  ```
+
+- **Errors:** 400 (bad code, or an unknown stop; the message lists the valid stops), 404.
+
+#### Admin: bus (`buses:manage`, held by ADMIN and SUPER_ADMIN)
+
+Every mutation is audited, regenerates the route's KB entry, and revalidates `buses`, `kb`, `stats` and `bus:{id}`.
+
+| Method & path | Body | Success |
+| --- | --- | --- |
+| `GET /api/admin/bus/routes` | none | 200: all routes, including inactive ones and all trips |
+| `POST /api/admin/bus/routes` | `{ "code": "R7", "name": "Gazipur", "stops": [ { "name": "Gazipur Chowrasta", "offsetMinutes": 0 }, { "name": "Campus", "offsetMinutes": 90 } ], "notes": null, "isActive": true }`. The first offset must be 0 and offsets must strictly increase. | 201 |
+| `PATCH /api/admin/bus/routes/{id}` | Any of `name`, `stops`, `notes`, `isActive` | 200 |
+| `DELETE /api/admin/bus/routes/{id}` | none | 200 (soft delete; its KB entry is removed) |
+| `POST /api/admin/bus/routes/{id}/trips` | `{ "departureTime": "19:00", "direction": "FROM_CAMPUS", "daysOfWeek": [6,0,1,2,3,4] }` (0 = Sunday) | 201 |
+| `PATCH /api/admin/bus/trips/{id}` | Any trip field | 200 |
+| `DELETE /api/admin/bus/trips/{id}` | none | 200 |
+
+Errors: 400 (bad `HH:mm`, days or stops), 403, 404, 409 (duplicate code).
+
+### Notices, forms & follows
+
+#### `GET /api/notices`
+
+Live notices (non-expired), pinned first, then newest.
+
+- **Auth:** none. **Cached:** tag `notices`, with an hourly key for expiry.
+- **Query:** `category?` (`CLASS_CANCELLATION|EXAM|GENERAL|URGENT|FORM_DEADLINE`), `departmentId?`, `courseId?`, `q?`, `cursor?`, `limit?`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": [ { "id": "…", "title": "Midterm Exam Schedule - Fall 2026", "body": "…", "category": "EXAM", "pinned": true, "expiresAt": null, "attachmentUrl": null, "createdAt": "…", "department": null, "course": null } ], "meta": { "limit": 20, "nextCursor": null } }
+  ```
+
+#### `GET /api/notices/{id}`
+
+One notice.
+
+- **Auth:** none. **Cached:** tags `notices` and `notice:{id}`.
+- **Success (200):** the notice object. **Errors:** 400, 404.
+
+#### Admin: notices (`notices:manage`, held by ADMIN and SUPER_ADMIN)
+
+`attachmentUrl` must be a PDF or image from the upload pipeline. Mutations are audited, revalidate `notices`, `notice:{id}`, `kb` and `stats`, and re-sync EXAM notices into the knowledge base.
+
+| Method & path | Body | Success |
+| --- | --- | --- |
+| `GET /api/admin/notices` | `cursor?`, `limit?` | 200: all notices, including expired ones |
+| `POST /api/admin/notices` | `{ "title": "CSE-3101 lab moved to Lab 4", "body": "…", "category": "GENERAL", "departmentId": "…", "courseId": "…", "pinned": false, "expiresAt": "2026-11-01T00:00:00+06:00", "attachmentUrl": null }` | 201. After the response, an **in-app notification fan-out** reaches students of that department and followers of the department or course, in batches of 1,000. Global notices (no department or course) are not fanned out. |
+| `PATCH /api/admin/notices/{id}` | Any create field | 200 |
+| `DELETE /api/admin/notices/{id}` | none | 200 (soft delete) |
+
+Errors: 400 (unknown department or course, a course from another department, or a foreign attachment), 403, 404.
+
+#### `GET /api/forms`
+
+Open forms (for example Google Forms) whose deadline hasn't passed, soonest deadline first; forms with no deadline come last.
+
+- **Auth:** none. **Cached:** tag `forms`. **Query:** `clubId?`, `cursor?`, `limit?`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": [ { "id": "…", "title": "Blood Donation Camp Volunteer Sign-up", "description": "…", "url": "https://…", "deadline": "2026-10-12T17:58:00.000Z", "club": { "id": "…", "name": "CU Blood Donors & Social Welfare Club", "slug": "cu-blood-donors-club" } } ], "meta": { "limit": 20, "nextCursor": null } }
+  ```
+
+#### Admin: forms (`forms:manage`, held by CLUB_ADMIN for their own clubs, ADMIN and SUPER_ADMIN)
+
+URLs must be https. A CLUB_ADMIN must set the `clubId` of one of their clubs; admins may post campus-wide forms. Mutations are audited and revalidate `forms`.
+
+| Method & path | Body | Success |
+| --- | --- | --- |
+| `GET /api/admin/forms` | `cursor?`, `limit?` | 200 (scoped to the CLUB_ADMIN's clubs) |
+| `POST /api/admin/forms` | `{ "title": "Computer Club Volunteer Form", "url": "https://forms.gle/…", "clubId": "…", "deadline": "2026-12-01T23:59:00+06:00", "description": null, "isOpen": true }` | 201 |
+| `PATCH /api/admin/forms/{id}` | Any field | 200 |
+| `DELETE /api/admin/forms/{id}` | none | 200 (soft delete) |
+
+Errors: 400 (non-https URL, or a CLUB_ADMIN without a club), 403 (another club), 404.
+
+#### `POST /api/follow` · `DELETE /api/follow?targetType=COURSE&targetId=…` · `GET /api/me/follows`
+
+Follow or unfollow a department, course or club. Following drives notice notifications.
+
+- **Auth:** cookie. **Headers:** `Origin`.
+- **POST body:**
+
+  ```json
+  { "targetType": "COURSE", "targetId": "cmuy…" }
+  ```
+
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "following": true, "targetType": "COURSE", "targetId": "…" } }
+  ```
+
+  `GET /api/me/follows` returns `[ { "targetType": "COURSE", "targetId": "…", "name": "CSE-3101 Database Management Systems", "createdAt": "…" } ]`.
+- **Errors:** 400, 401, 404 (the target doesn't exist).
+
+### Module 4: Lost & found + complaints
+
+#### `GET /api/lost-found`
+
+The public board. Cards contain **no reporter identity or contact details**.
+
+- **Auth:** none. **Cached:** tag `lost-found`.
+- **Query:** `type?` (`LOST|FOUND`), `category?`, `status` (default `OPEN`; `OPEN|CLAIMED|RESOLVED` — hidden posts are never listed), `q?`, `dateFrom?`, `dateTo?`, `cursor?`, `limit?`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": [ { "id": "…", "type": "FOUND", "title": "Black wallet found near library", "description": "…", "category": "WALLET", "locationText": "Library staircase", "occurredAt": "…", "imageUrls": [], "status": "OPEN", "createdAt": "…" } ], "meta": { "limit": 20, "nextCursor": null } }
+  ```
+
+#### `POST /api/lost-found`
+
+Posts a lost or found item.
+
+- **Auth:** cookie. **Headers:** `Origin`, `Content-Type: application/json`. **Rate limit:** `upload`.
+- **Body:** `imageUrls` (at most 4) must be the caller's own uploads from `/api/upload/image` with `purpose=lost-found`. `contactVisible` (default `false`) lets an **approved claimer** see your email and phone; contact details are never public.
+
+  ```json
+  { "type": "LOST", "title": "Grey backpack", "description": "Grey backpack with a laptop charger inside.", "category": "BAG", "locationText": "Bus R1", "occurredAt": "2026-10-07T09:00:00+06:00", "imageUrls": [], "contactVisible": true }
+  ```
+
+- **Success (201):** the post, including `contactVisible`, `resolvedAt` and `_count.claims`.
+- **Errors:** 400 (a foreign or external photo URL, more than 4 photos, or a future date), 401, 403, 429.
+
+#### `GET /api/lost-found/{id}`
+
+The public post plus a per-viewer `viewer` block.
+
+- **Auth:** none required. **Cached:** the post itself, under tags `lost-found` and `lf:{id}`. The `viewer` block is computed live.
+- **`viewer.contact`** contains the other party's name, email and phone, and is shown **only** to:
+  - the reporter, once a claim is approved (the claimer's contact);
+  - the approved claimer, when the reporter set `contactVisible: true` (the reporter's contact).
+
+  Anonymous viewers and other users always get `null`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "id": "…", "title": "…", "status": "CLAIMED", "reporter": { "name": "Demo Student Two" }, "_count": { "claims": 1 }, "viewer": { "isReporter": false, "myClaim": { "id": "…", "status": "APPROVED" }, "contact": { "name": "Demo Student Two", "email": "…", "phone": null } } } }
+  ```
+
+- **Errors:** 400, 404 (unknown, removed or hidden).
+
+#### `PATCH /api/lost-found/{id}` · `DELETE /api/lost-found/{id}`
+
+Edits or soft-deletes your own post. Edits are allowed only while the post is `OPEN`.
+
+- **Auth:** cookie (reporter).
+- **PATCH body:** any of `title`, `description`, `category`, `locationText`, `occurredAt`, `imageUrls`, `contactVisible`.
+
+  ```json
+  { "contactVisible": true }
+  ```
+
+- **Success (200):** the updated post. DELETE returns `{ "message": "Post deleted.", "id": "…" }`.
+- **Errors:** 400, 401, 403 (not yours), 404, 409 (not `OPEN`).
+
+#### `POST /api/lost-found/{id}/claim`
+
+Claims an item. The reporter is notified in-app and by email.
+
+- **Auth:** cookie. **Headers:** `Origin`, `Content-Type: application/json`.
+- **Body:**
+
+  ```json
+  { "message": "Black leather wallet, has my NID (Rahim) and a CU library card inside." }
+  ```
+
+- **Success (201):**
+
+  ```json
+  { "success": true, "data": { "message": "Claim sent. The reporter has been notified.", "claim": { "id": "…", "status": "PENDING", "createdAt": "…" } } }
+  ```
+
+- **Errors:**
+
+  | Status | Code | When |
+  | --- | --- | --- |
+  | 409 | `OWN_ITEM` | You reported this item |
+  | 409 | `ITEM_NOT_OPEN` | The item is no longer open |
+  | 409 | `ALREADY_CLAIMED` | You already have a pending or approved claim. A claim that was rejected can be filed again. |
+  | 400 / 401 / 404 | | Bad input, not signed in, unknown item |
+
+#### `GET /api/lost-found/{id}/claims` · `PATCH /api/lost-found/{id}/claims/{claimId}`
+
+Lists and decides claims.
+
+- **Auth:** the reporter or a `lostfound:moderate` user.
+- **GET success (200):**
+
+  ```json
+  [ { "id": "…", "message": "…", "status": "PENDING", "createdAt": "…", "claimer": { "id": "…", "name": "Demo Student", "studentId": "CU-DEMO-001" } } ]
+  ```
+
+  No contact details are included.
+- **PATCH body:**
+
+  ```json
+  { "decision": "APPROVE" }
+  ```
+
+  or `{ "decision": "REJECT" }`.
+- **PATCH success (200):** `{ "claimId": "…", "decision": "APPROVE", "itemStatus": "CLAIMED" }`. Approving marks the item `CLAIMED` and auto-rejects other pending claims. Every affected claimer is notified in-app and by email.
+- **Errors:** 403 (strangers), 404, 409 (claim not `PENDING`, or the item already claimed).
+
+#### `PATCH /api/lost-found/{id}/status`
+
+Moves the item through its lifecycle.
+
+- **Auth:** the reporter or a moderator.
+- **Body:** `{ "status": "RESOLVED" }`.
+- **Allowed transitions:**
+  - Reporter: `OPEN → RESOLVED`, `CLAIMED → RESOLVED`, and `CLAIMED → OPEN` (a claim fell through; the approved claim is rejected).
+  - Moderators may make any transition.
+- **Success (200):** `{ "id": "…", "status": "RESOLVED" }`.
+- **Errors:** 403; 409 (an illegal transition, for example `"Cannot change status from RESOLVED to OPEN."`).
+
+#### `GET /api/lost-found/{id}/matches`
+
+Up to 5 likely counterpart posts.
+
+- **Auth:** none. **Cached:** tags `lost-found` and `lf:{id}`.
+- **Matching:** posts of the opposite type, still `OPEN`, within ±60 days. The score is 0.35·same category + 0.45·`pg_trgm` text similarity + 0.2·date proximity.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": [ { "id": "…", "type": "FOUND", "title": "Black wallet found near library", "score": 0.6766, "…": "card fields" } ] }
+  ```
+
+#### `GET /api/me/lost-found`
+
+Your own posts, in any status, with claim counts.
+
+- **Auth:** cookie. **Query:** `status?`, `cursor?`, `limit?`.
+
+#### Admin: lost & found moderation (`lostfound:moderate`, held by MODERATOR, ADMIN and SUPER_ADMIN)
+
+| Method & path | Body / query | Success |
+| --- | --- | --- |
+| `GET /api/admin/lost-found` | `status?`, `type?`, `q?`, `cursor?`, `limit?` | 200: every post, including hidden ones, with the reporter's identity |
+| `PATCH /api/admin/lost-found/{id}` | `{ "action": "HIDE", "reason": "Contains a personal phone number." }`. `action` is `HIDE`, `RESTORE`, `RESOLVE` or `REMOVE`; HIDE and REMOVE need a `reason`. | 200: `{ "id": "…", "action": "HIDE" }`. The action is audited and, for HIDE and REMOVE, the reporter is notified. |
+
+Errors: 400 (no reason), 403, 404.
+
+#### `POST /api/complaints`
+
+Files a complaint.
+
+- **Auth:** cookie. **Headers:** `Origin`, `Content-Type: application/json`. **Rate limit:** `upload`.
+- **Body:** `category` is `ACADEMIC|ADMINISTRATIVE|FACILITIES|TRANSPORT|IT_SERVICES|FINANCE|HARASSMENT|OTHER`. `attachmentUrls` (at most 4) must be your own image uploads. With `isAnonymous: true`, staff never see who filed it.
+
+  ```json
+  { "category": "TRANSPORT", "subject": "Bus R1 left 15 minutes early", "description": "The 08:30 R1 bus left Dhanmondi 27 at 08:15 today…", "attachmentUrls": [], "isAnonymous": false }
+  ```
+
+- **What happens:** a ticket `CU-<Dhaka year>-<6-digit sequence>` is allocated by an atomic per-year counter. Harassment complaints are auto-prioritized `HIGH`. A confirmation goes out in-app and by email.
+- **Success (201):**
+
+  ```json
+  { "success": true, "data": { "message": "Complaint received. Your ticket number is CU-2026-000002.", "complaint": { "id": "…", "ticketNo": "CU-2026-000002", "category": "TRANSPORT", "subject": "…", "status": "RECEIVED", "priority": "MEDIUM", "isAnonymous": false, "createdAt": "…" } } }
+  ```
+
+- **Errors:** 400, 401, 403, 429.
+
+#### `GET /api/me/complaints`
+
+Your complaints, newest first.
+
+- **Auth:** cookie. **Query:** `status?`, `cursor?`, `limit?`. **Response header:** `Cache-Control: private, no-store`. Complaints are never cached publicly.
+
+#### `GET /api/complaints/track/{ticketNo}`
+
+Tracks a ticket.
+
+- **Auth:** optional. **Rate limit:** 10 per 15 min per IP, against enumeration.
+- **Views:**
+  - **Signed-in owner:** full details plus the public timeline (internal notes are excluded).
+  - **`?email=<complainant email>`:** a limited view with `ticketNo`, `category`, `status`, the dates and a timeline of statuses only. No subject, description or notes.
+  - **Anything else** (wrong email, someone else's ticket, unknown ticket): the same `404 NOT_FOUND`, so tickets can't be enumerated.
+- **Success (200), owner:**
+
+  ```json
+  { "success": true, "data": { "view": "owner", "ticketNo": "CU-2026-000002", "status": "RESOLVED", "subject": "…", "timeline": [ { "status": "RECEIVED", "note": "Complaint received.", "createdAt": "…" }, { "status": "RESOLVED", "note": "The driver has been warned…", "createdAt": "…" } ] } }
+  ```
+
+- **Errors:** 400 (malformed ticket), 404, 429.
+
+#### Admin: complaints (`complaints:manage`, held by MODERATOR, ADMIN and SUPER_ADMIN)
+
+For anonymous complaints, `user` is `null` everywhere, including the complainant's own timeline entries.
+
+| Method & path | Body / query | Success |
+| --- | --- | --- |
+| `GET /api/admin/complaints` | `status?`, `priority?`, `category?`, `assignee?` (`me`, `unassigned` or a user id), `q?` (ticket or subject), `cursor?`, `limit?` | 200: list with `user` (or `null`) and `assignedTo` |
+| `GET /api/admin/complaints/{id}` | none | 200: full detail including **internal** notes and their authors |
+| `PATCH /api/admin/complaints/{id}` | `{ "status": "IN_REVIEW", "priority": "HIGH", "assignedToId": "<staff id>", "note": "Forwarded to the Transport Office.", "isInternal": false }` (any subset) | 200: the updated detail. Each change adds a `ComplaintUpdate`; RESOLVED sets `resolvedAt`. Status changes and **public** notes notify the complainant in-app and by email; internal notes never do. |
+
+Errors: 400 (the assignee must be active complaints staff, or nothing to update), 403, 404.
+
+### Platform
+
+#### `GET /api/search?q=dbms&limit=5`
+
+Grouped search across events (upcoming), resources (ranked search), notices (live), helpdesk (KB retrieval) and lost & found (open or claimed).
+
+- **Auth:** none. **Rate limit:** `search`. **Cached:** per normalized query, under tags `events`, `resources`, `notices`, `kb` and `lost-found`. Terms are logged to `SearchTerm` after the response, for the top-searched-terms chart.
+- **Query:** `limit` is 1–10 per group (default 5).
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "q": "dbms", "results": { "events": [], "resources": [ { "id": "…", "title": "Database Management Systems - Complete Lecture Notes", "subtitle": "CSE-3101 · CSE", "link": "/resources/…" } ], "notices": [], "helpdesk": [], "lostFound": [] } } }
+  ```
+
+- **Errors:** 400 (`q` under 2 characters), 429.
+
+#### Notifications (cookie auth, `Cache-Control: private, no-store`)
+
+| Method & path | Body / query | Success |
+| --- | --- | --- |
+| `GET /api/notifications` | `unreadOnly?` (`true`), `cursor?`, `limit?` | 200: `[ { "id": "…", "type": "COMPLAINT", "title": "Update on CU-2026-000002", "body": "…", "link": "/complaints/CU-2026-000002", "readAt": null, "createdAt": "…" } ]` |
+| `GET /api/notifications/unread-count` | none | 200: `{ "unread": 7 }` |
+| `PATCH /api/notifications/{id}/read` | none (needs `Origin`) | 200: `{ "id": "…", "read": true }`. 404 if it isn't yours. |
+| `POST /api/notifications/read-all` | none (needs `Origin`) | 200: `{ "marked": 6 }` |
+
+#### `GET /api/cron/reminders`
+
+The "event starts tomorrow" job, built for Vercel Cron.
+
+- **Auth:** `Authorization: Bearer <CRON_SECRET>`; otherwise 401.
+- **Behaviour:** registrants of published events that start tomorrow (Asia/Dhaka) get an in-app notification and a bulk email. Each event is claimed with `reminderSentAt` first, so repeated runs never double-send. The same job is available as `npm run reminders:send`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "events": 1, "notified": 0, "emailed": 0 } }
+  ```
+
+  A second run returns `{ "events": 0, … }`.
+
+#### `GET /api/admin/stats`
+
+The admin dashboard.
+
+- **Permission:** `admin:access` (any staff role). **Cached:** tag `stats`, with an hourly key.
+- **Success (200):** `totals` plus chart series. Signups are per Dhaka day over 30 days and registrations per week over 12 weeks; `complaintResolution` is in hours, and the top 5 events and top 10 search terms are included.
+
+  ```json
+  { "success": true, "data": { "generatedAt": "…", "totals": { "users": 6, "events": 30, "registrations": 6, "checkIns": 1, "resources": 55, "pendingResources": 4, "lostFound": 6, "openLostFound": 5, "complaints": 2, "openComplaints": 1, "chatbotUnanswered": 10, "chatbotUnhelpful": 1 }, "charts": { "signupsPerDay": [ { "day": "2026-10-07", "count": 6 } ], "registrationsPerWeek": [], "complaintResolution": { "resolved": 1, "avgHours": 0, "medianHours": 0 }, "topEvents": [], "topSearchTerms": [ { "term": "bus", "count": 2 } ] } } }
+  ```
+
+- **Errors:** 401, 403.
+
+#### Admin: users & audit
+
+| Method & path | Permission | Body / query | Success / rules |
+| --- | --- | --- | --- |
+| `GET /api/admin/users` | `users:manage` (ADMIN+) | `q?` (name, email or student ID), `role?`, `isActive?`, `cursor?`, `limit?` | 200: users (no secrets) |
+| `PATCH /api/admin/users/{id}` | `users:manage` | `{ "role": "MODERATOR" }` and/or `{ "isActive": false }` | 200: the user. Every change **revokes that user's sessions** (tokenVersion++). You can't change your own account here, and only a SUPER_ADMIN may grant or touch ADMIN/SUPER_ADMIN (otherwise 403). |
+| `POST /api/admin/users/{id}/force-logout` | `users:manage` | none (needs `Origin`) | 200: `{ "message": "User signed out on all devices.", "id": "…" }` (same rules) |
+| `GET /api/admin/audit-logs` | `audit:view` (ADMIN+) | `action?` (e.g. `complaint.update`), `entityType?`, `entityId?`, `actorId?`, `cursor?`, `limit?` | 200: `[ { "id": "…", "action": "user.update", "entityType": "User", "entityId": "…", "metadata": {}, "ip": "…", "createdAt": "…", "actor": { "id": "…", "name": "…", "role": "ADMIN" } } ]` |
+
+#### `POST /api/revalidate`
+
+Manual cache revalidation for operations; server to server, so there is no Origin check.
+
+- **Auth:** header `x-revalidate-secret: <REVALIDATE_SECRET>`; otherwise 401. **Rate limit:** `authStrict`.
+- **Body:**
+
+  ```json
+  { "tags": ["events", "kb", "event:cmuy…", "everything"] }
+  ```
+
+  Only the static tags in the tag map and `<kind>:<cuid>` tags are allowed. Anything else is reported back as `rejected`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "revalidated": ["events", "kb", "event:cmuy…"], "rejected": ["everything"] } }
+  ```
+
+- **Errors:** 400 (no allowlisted tags), 401, 429.
+
+#### `GET /api/health`
+
+Uptime probe, sent with `Cache-Control: no-store`.
+
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "status": "ok", "version": "0.1.0", "db": { "ok": true, "latencyMs": 277 }, "uptimeSeconds": 28, "time": "…" } }
+  ```
+
+- **Errors:** 503 `DEGRADED` when the database is unreachable.
+
+#### `GET /sitemap.xml`
+
+Generated by `src/app/sitemap.ts`. It lists the static public pages plus every published event, approved resource, live notice, published FAQ entry and active club, tag-cached under `events`, `resources`, `notices`, `kb` and `clubs`.
+
 ## Caching tag map
 
 How it works:
@@ -1128,17 +1712,18 @@ How it works:
 | `resource:{id}` | One resource page (download and bookmark counts) | `revalidateResources(id)`, `revalidateResourceDetail(id)` (download, bookmark) |
 | `departments` / `courses` | `GET /api/departments`, `GET /api/courses` | `revalidateAcademics()` |
 | `department:{id}` / `course:{id}` | Course lists per department, resource pages in that course or department | `revalidateAcademics(refs)`, `revalidateResources(id, refs)` |
-| `notices` | Notice board | `revalidateNotices()`, `revalidateAcademics()` |
-| `notice:{id}` | Single notice | `revalidateNotices(id)` |
-| `buses` | Routes and timetables | `revalidateBuses()` |
-| `bus:{id}` | Single route | `revalidateBuses(id)` |
-| `kb` | Knowledge base / FAQ pages | `revalidateKnowledgeBase()`, `revalidateBuses()` |
-| `kb:{id}` | Single KB entry | `revalidateKnowledgeBase(id)` |
-| `lost-found` | Lost & found board | `revalidateLostFound()` |
-| `lf:{id}` | Single lost & found item | `revalidateLostFound(id)` |
-| `stats` | Landing page counters | Every collection helper, `revalidateStats()` |
+| `notices` | `GET /api/notices`, the chatbot's class-cancellation intent, global search, sitemap | `revalidateNotices()` (notice create/update/delete), `revalidateAcademics()` |
+| `notice:{id}` | `GET /api/notices/{id}` | `revalidateNotices(id)` |
+| `forms` | `GET /api/forms`, the chatbot's open-forms intent | `revalidateForms()` (form create/update/delete), `revalidateClubs()` |
+| `buses` | `GET /api/bus/routes`, `GET /api/bus/routes/{code}`, `/api/bus/next`, chatbot bus intents | `revalidateBuses()` (route or trip create/update/delete) |
+| `bus:{id}` | One route | `revalidateBuses(id)` |
+| `kb` | Helpdesk lists, categories and entries, **cached chatbot retrieval**, global search, sitemap | `revalidateKnowledgeBase()` (entry CRUD, publish, import), `revalidateBuses()` and notice mutations (auto-synced entries) |
+| `kb:{id}` | `GET /api/helpdesk/entries/{id}` | `revalidateKnowledgeBase(id)` |
+| `lost-found` | `GET /api/lost-found`, item pages, matches, global search | `revalidateLostFound()` (post create/edit/delete, claim decisions, status changes, moderation) |
+| `lf:{id}` | One post and its matches | `revalidateLostFound(id)` |
+| `stats` | `GET /api/admin/stats` (hourly key) | Every collection helper, plus complaint and user changes |
 
-User-specific data (dashboards, notifications, my registrations, my complaints) is never cached.
+**Never cached** (user-specific or private): notifications, my registrations, bookmarks, follows and posts, chatbot sessions, complaints (filing, tracking, admin), the per-viewer `viewer` block of a lost & found post, and admin lists.
 
 ## Security
 
@@ -1161,6 +1746,7 @@ Target: Vercel (Node.js runtime) with Neon.
 1. Set every variable from the table above in the hosting dashboard.
    **Brevo:** if *Security → Authorised IPs* is enabled, Brevo rejects API calls from unlisted IPs with 401. Serverless hosts like Vercel have no fixed IP, so either disable that restriction or route email through a fixed-IP egress.
 2. Build command: `npm run build`. Migrations: `npm run db:deploy`, run in CI or as a release step.
+   `vercel.json` schedules `GET /api/cron/reminders` daily at 12:00 UTC (18:00 Dhaka); Vercel sends `Authorization: Bearer $CRON_SECRET` automatically. UploadThing must be able to reach `/api/uploadthing` at the public URL.
 3. After the hackathon, rotate the Neon password, Brevo key, UploadThing token, JWT secret and admin passwords.
 
 ## Folder structure
@@ -1171,7 +1757,8 @@ prisma/
   migrations/                   # init, raw-SQL full-text search, event bookmarks + sample flag
   seed.ts / seed-content.ts     # accounts + reference data / demo events, courses, resources
 prisma.config.ts                # Prisma 7 CLI config (DIRECT_URL, migrations, seed)
-scripts/cleanup-orphan-uploads.ts
+scripts/cleanup-orphan-uploads.ts, scripts/send-reminders.ts
+vercel.json                     # daily reminder cron
 docs/ARCHITECTURE.md
 src/
   app/
@@ -1182,15 +1769,20 @@ src/
     api/                        # Route Handlers (JSON API)
   components/{ui,layout,shared,features}
   config/public-env.ts          # browser-safe NEXT_PUBLIC_* config
+  config/chatbot-synonyms.ts    # English/Banglish/Bangla vocabulary → canonical search terms
   generated/prisma/             # Prisma client (generated, git-ignored)
   hooks/
   lib/                          # env, prisma, logger, errors, api-response, cache-tags
   lib/auth/                     # session JWT, RBAC, password policy, OTP primitives (pure)
   proxy.ts                      # Next 16 proxy (ex-middleware): JWT-only route protection
   server/
-    services/                   # auth, user, otp, email, audit, upload, club, event, registration, resource, academic, notification
-    queries/                    # tag-cached public reads ("use cache") for events, clubs, resources
-    domain/                     # pure rules: registration eligibility, check-in state machine
+    services/                   # auth, user, otp, email, audit, upload, club, event, registration, resource, academic,
+                                #   notification, chatbot (+intents, llm), knowledge (+sync), bus, notice/forms, follow,
+                                #   lost-found, complaint, platform (search log, reminders, users, audit, revalidate)
+    queries/                    # tag-cached reads ("use cache"): events, clubs, resources, helpdesk, bus/notices/forms,
+                                #   lost & found, global search, admin stats, sitemap
+    domain/                     # pure rules: registration, check-in, bus timetable, tickets, lost & found
+    chatbot/                    # pure chatbot pipeline: normalize, intents, retrieval SQL, confidence, compose
     search/                     # parameterised resource search query builder
     upload/                     # image pipeline (magic bytes → resize → compress)
     repositories/               # Prisma queries with safe selects
