@@ -30,6 +30,7 @@ export const Permission = {
   ComplaintsManage: "complaints:manage",
   AuditView: "audit:view",
   ChatAnalyticsView: "chat:analytics",
+  AcademicsManage: "academics:manage",
 } as const;
 
 export type Permission = (typeof Permission)[keyof typeof Permission];

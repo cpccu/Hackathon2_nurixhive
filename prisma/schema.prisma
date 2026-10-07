@@ -224,6 +224,7 @@ model User {
   clubMemberships       ClubMember[]
   eventsCreated         Event[]             @relation("EventCreatedBy")
   eventRegistrations    EventRegistration[] @relation("RegistrationUser")
+  eventBookmarks        EventBookmark[]
   checkInsPerformed     EventRegistration[] @relation("RegistrationCheckedInBy")
   resourcesUploaded     Resource[]          @relation("ResourceUploadedBy")
   resourcesReviewed     Resource[]          @relation("ResourceReviewedBy")
@@ -364,6 +365,7 @@ model Event {
   club          Club                @relation(fields: [clubId], references: [id], onDelete: Restrict)
   createdBy     User                @relation("EventCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   registrations EventRegistration[]
+  bookmarks     EventBookmark[]
 
   @@index([status, startAt])
   @@index([clubId])
@@ -391,6 +393,20 @@ model EventRegistration {
   @@index([userId, createdAt])
 }
 
+/// "Saved" events (user bookmarks).
+model EventBookmark {
+  id        String   @id @default(cuid())
+  userId    String
+  eventId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventId])
+  @@index([userId, createdAt])
+}
+
 // ───────────────────────────── Resources ─────────────────────────────
 
 model Resource {
@@ -414,6 +430,8 @@ model Resource {
   rejectionReason String?
   downloadCount   Int              @default(0)
   bookmarkCount   Int              @default(0)
+  /// Demo/seed data pointing at a shared sample PDF (excluded from orphan cleanup).
+  isSample        Boolean          @default(false)
   tags            String[]
   /// Generated column (title A, tags A, description B) - see raw SQL migration.
   searchVector    Unsupported("tsvector")? @default(dbgenerated())

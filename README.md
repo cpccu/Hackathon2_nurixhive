@@ -2,7 +2,7 @@
 
 One hub for campus life at City University (Bangladesh). Events and clubs, academic resources, notices, bus schedules, lost and found, complaints, and an "Ask CampusOS" assistant all live in one fast, mobile-first web app instead of being scattered across Facebook groups, Google Forms and notice boards.
 
-> **Status:** Task 1 is done: project foundation, database schema and migrations, core libraries. The UI and API endpoints are added in later tasks.
+> **Status:** the backend is in progress. Done so far: the foundation, auth and security, the upload system, Module 1 (Clubs & Events) and Module 2 (Resource Hub). The UI comes in later tasks.
 
 ---
 
@@ -111,6 +111,7 @@ npm run dev                 # http://localhost:3000
 | `db:deploy` | Apply pending migrations (`prisma migrate deploy`), for CI and production |
 | `db:seed` | Run `prisma/seed.ts` (idempotent) |
 | `test` / `test:watch` | Vitest unit tests (`tests/unit`, fake env, no DB or network) |
+| `uploads:cleanup` | Lists orphaned uploads older than 24 h; add `-- --apply` to delete them from UploadThing and the DB |
 | `db:studio` | Prisma Studio |
 
 > **Prisma 7 note:** connection URLs are not in `schema.prisma`. The CLI reads `DIRECT_URL` from `prisma.config.ts`, and the app connects with the pooled `DATABASE_URL` in `src/lib/prisma.ts`.
@@ -130,7 +131,14 @@ Run `npm run db:seed`. It is idempotent and safe to re-run. It creates:
 
 - All seeded accounts are pre-verified, and their passwords must pass the password policy or the seed stops with a clear error.
 - **A re-run never overwrites a password.** Passwords are set only when an account is first created.
-- The seed also creates 9 departments (CSE, EEE, CE, TE, BBA, ENG, BAN, JMC, LAW) and 12 clubs.
+- The seed also creates demo content (`prisma/seed-content.ts`):
+  - 9 departments (CSE, EEE, CE, TE, BBA, ENG, BAN, JMC, LAW) and 56 courses.
+  - 12 clubs. The CLUB_ADMIN is the admin of *CU Computer Club*.
+  - 30 events, dated relative to the seed day (Dhaka): 23 published (several this week), 4 completed, 1 cancelled and 2 drafts. *Mock Interview Day* has only 5 seats, to demo capacity limits.
+  - 6 registrations for the demo students.
+  - 60 resources across all departments: 55 approved, 4 pending (in the moderation queue) and 1 rejected.
+- **Sample files are clearly flagged.** Every seed resource has `isSample: true` and a `sample-resource-NNN` key, and points at one real generated PDF (`campusos-sample-resource.pdf`). The seed uploads that PDF to UploadThing once and tracks it in `UploadedFile`. If the upload fails, a flagged placeholder URL is used instead.
+- Event dates and the counters (`registrationCount`, sample `downloadCount`) are refreshed on each run.
 - Credentials are never committed to the repository.
 
 ## API reference
@@ -528,20 +536,598 @@ Changes the password and signs out every other device.
 
 The proxy only verifies the JWT. Route handlers repeat the full check against the database.
 
+### List conventions (all modules)
+
+- **Pagination:** `?cursor=<opaque>&limit=1..50` (default 20). Responses carry `meta: { "limit": 20, "nextCursor": "…" | null }`. Pass `nextCursor` back as `cursor` to get the next page; `null` means the last page. Cursors are keyset-based, never OFFSET. A malformed resource-search cursor returns `400 VALIDATION_ERROR`.
+- **Empty query values** (`?q=`) are ignored. Unknown query parameters are rejected (`400 VALIDATION_ERROR`).
+- **Ids** are Prisma cuids (`c` + 20–32 lowercase alphanumerics). A malformed id returns `400 VALIDATION_ERROR` before any database work.
+- **Times** in request bodies are ISO-8601 with an offset (`2026-11-02T15:00:00+06:00`). Responses are UTC ISO strings. Campus calendar maths (week, month) uses Asia/Dhaka.
+
+Module error codes:
+
+| Code | Status | Meaning |
+| --- | --- | --- |
+| `EVENT_NOT_OPEN` | 409 | The event is a draft, cancelled or completed |
+| `EVENT_ENDED` | 409 | The event has already ended |
+| `REGISTRATION_CLOSED` | 409 | Past the registration deadline (or the start time if there is no deadline) |
+| `ALREADY_REGISTERED` | 409 | An active registration already exists |
+| `EVENT_FULL` | 409 | Capacity is reached (checked atomically) |
+| `TICKET_NOT_FOUND` | 404 | The QR token is unknown |
+| `WRONG_EVENT` | 409 | The ticket belongs to another event |
+| `REGISTRATION_CANCELLED` | 409 | The ticket's registration was cancelled |
+| `ALREADY_CHECKED_IN` | 409 | Already checked in (`details.checkedInAt`) |
+| `EVENT_NOT_ACTIVE` | 409 | Check-in at a draft or cancelled event |
+| `CHECKIN_NOT_OPEN` / `CHECKIN_CLOSED` | 409 | Outside the door window (3 h before start to 3 h after end) |
+| `IMAGE_PROCESSING_FAILED` | 422 | The image is corrupt or could not be compressed. The raw file is never uploaded. |
+| `IMAGE_QUEUE_FULL` | 503 | The compression queue is saturated. Retry shortly. |
+| `UPLOAD_FAILED` / `UPLOAD_DELETE_FAILED` | 503 | UploadThing is unavailable. Safe to retry. |
+
+Additional rate-limit tiers: **`upload`** (DB) allows 20 per 10 min per IP for image uploads, PDF upload requests and resource submissions. **Check-in** (DB) allows 240 per minute per IP, because door scanners send requests in bursts. Event and resource search with `q` uses the `search` tier. Other public reads use `publicRead`.
+
+### Uploads
+
+Every file URL stored in the database must come from this pipeline. Stored URLs must be `https://<app>.ufs.sh/f/<key>` (or legacy `https://utfs.io/f/<key>`), the key must exist in `UploadedFile`, and it must belong to the caller. Admins may reuse any tracked image. Anything else is rejected with `400 VALIDATION_ERROR`, using the real field name in `details[].path` (for example `bannerUrl` or `fileUrl`).
+
+#### `POST /api/upload/image`
+
+Compresses an image server-side and stores it on UploadThing.
+
+- **Auth:** cookie (any signed-in user). **Headers:** `Origin`, `Content-Type: multipart/form-data`. **Rate limit:** `upload`.
+- **Form fields:**
+  - `file` (required): JPEG, PNG, WebP, AVIF or GIF, at most 4 MB. The real type is checked by magic bytes, not the extension.
+  - `purpose` (optional): one of `general` (default), `avatar`, `event-banner`, `club-logo`, `lost-found`, `complaint`, `resource-thumbnail`.
+
+  ```bash
+  curl -X POST /api/upload/image -H "Origin: https://app" -b cookies -F "file=@banner.jpg" -F "purpose=event-banner"
+  ```
+- **Pipeline:**
+  1. Auth and rate limit.
+  2. Magic-byte check.
+  3. If the image exceeds the purpose's bounds, sharp resizes it to fit (EXIF orientation is applied, and the result is never upscaled).
+  4. `image-video-compressor` compresses it (`format: "auto"`, quality 80, metadata stripped).
+  5. `UTApi.uploadFiles` uploads it.
+  6. An `UploadedFile` row is saved.
+
+  The bounds per purpose are: avatar and club-logo 512², resource-thumbnail 800², event-banner 1920×1080, everything else 1600².
+- **Success (201):** `url` is the value to store in `bannerUrl`, `logoUrl` and similar fields.
+
+  ```json
+  { "success": true, "data": { "url": "https://wqsc48wcpm.ufs.sh/f/oNCr…", "key": "oNCr…", "size": 18088, "originalSize": 530332, "compressionRatio": "96.6%", "mimeType": "image/webp", "width": 1620, "height": 1080 } }
+  ```
+
+- **Errors:**
+
+  | Status | Code | When |
+  | --- | --- | --- |
+  | 400 | `BAD_REQUEST` | No `file` field |
+  | 400 | `VALIDATION_ERROR` | Bad `purpose` |
+  | 401 | `UNAUTHORIZED` | Not signed in |
+  | 403 | `FORBIDDEN` | Bad Origin |
+  | 413 | `PAYLOAD_TOO_LARGE` | Over 4 MB, or too many pixels |
+  | 415 | `UNSUPPORTED_MEDIA_TYPE` | Not an allowed image, or not multipart |
+  | 422 | `IMAGE_PROCESSING_FAILED` | Corrupt image |
+  | 429 | `RATE_LIMITED` | Rate limit hit |
+  | 503 | `UPLOAD_FAILED` / `IMAGE_QUEUE_FULL` | Storage or queue unavailable |
+
+#### `GET | POST /api/uploadthing` (UploadThing FileRouter, route `pdfUploader`)
+
+PDFs go straight from the browser to UploadThing, which avoids the serverless body limit. Use `@uploadthing/react` with `endpoint="pdfUploader"`.
+
+- **Limits:** PDF only, at most 16 MB, 1 file.
+- **Auth:** the FileRouter `middleware` requires a valid session (otherwise `403 {"message":"Sign in to upload files."}`) and applies the `upload` rate limit.
+- **`onUploadComplete`:** re-reads the stored file's first bytes, which must be `%PDF-`. If they aren't, the file is deleted from UploadThing and rejected. Otherwise it records an `UploadedFile` (kind `PDF`, owned by the uploader) and returns `{ url, key }` to the client.
+- **Next step:** send that `url` and `key` to `POST /api/resources`.
+- **Errors:** wrong type returns `400 {"message":"Invalid config: InvalidFileType"}`; too large returns `TOO_LARGE`.
+- **Production note:** UploadThing calls back to `/api/uploadthing`, so the deployment URL must be publicly reachable. Local `next dev` uses UploadThing's dev stream instead.
+
+#### `DELETE /api/upload/{key}`
+
+Deletes an uploaded file from UploadThing (`UTApi.deleteFiles`) and from `UploadedFile`.
+
+- **Auth:** cookie. The caller must be the owner or ADMIN+. **Headers:** `Origin`. **Rate limit:** `write`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "message": "File deleted.", "key": "oNCr…" } }
+  ```
+
+- **Errors:**
+
+  | Status | Code | When |
+  | --- | --- | --- |
+  | 400 | `VALIDATION_ERROR` | Bad key format |
+  | 401 | `UNAUTHORIZED` | Not signed in |
+  | 403 | `FORBIDDEN` | Not the owner |
+  | 404 | `NOT_FOUND` | Unknown key |
+  | 409 | `CONFLICT` | Still attached to a live resource |
+  | 503 | `UPLOAD_DELETE_FAILED` | UploadThing unavailable |
+
+Orphan cleanup: `npm run uploads:cleanup` lists tracked uploads older than 24 h that no user, club, event, resource, notice, lost & found item or complaint references. Add `-- --apply` to delete them from UploadThing and the database.
+
+### Module 1: Clubs & events
+
+#### `GET /api/clubs`
+
+The active club directory, alphabetical.
+
+- **Auth:** none. **Cached:** tag `clubs`.
+- **Query:** `category?` (a `ClubCategory`), `q?` (name contains), `cursor?`, `limit?`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": [ { "id": "cmuybdskx…", "name": "CU Blood Donors & Social Welfare Club", "slug": "cu-blood-donors-club", "description": "…", "logoUrl": null, "coverUrl": null, "category": "SOCIAL_SERVICE", "memberCount": 0 } ], "meta": { "limit": 3, "nextCursor": "cmuybdr6q…" } }
+  ```
+
+- **Errors:** 400 `VALIDATION_ERROR`, 429.
+
+#### `GET /api/clubs/{slug}`
+
+A club profile with its next 6 published events.
+
+- **Auth:** none. **Cached:** tags `clubs`, `club:{id}` and `events`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "id": "…", "name": "CU Computer Club", "slug": "cu-computer-club", "category": "TECHNOLOGY", "memberCount": 1, "upcomingEvents": [ { "id": "…", "title": "Hands-on Git & GitHub Workshop", "startAt": "2026-10-10T08:00:00.000Z", "spotsLeft": 59 } ] } }
+  ```
+
+- **Errors:** 400 (bad slug), 404 `NOT_FOUND`.
+
+#### `GET /api/events`
+
+The public event feed, sorted by `startAt` (newest first for `when=past`).
+
+- **Auth:** none. **Cached:** tag `events`. The cache key includes an hourly "now" bucket.
+- **Query:**
+  - `when`: `upcoming` (default), `thisWeek` (the Dhaka Sat–Fri week), `past` or `all`.
+  - `clubId?`, `clubSlug?`, `type?` (`WORKSHOP|CONTEST|SEMINAR|CULTURAL|SPORTS|MEETUP|OTHER`).
+  - `dateFrom?`, `dateTo?` (ISO with offset; filters `startAt`).
+  - `q?` (title or venue contains), `cursor?`, `limit?`.
+
+  Example: `GET /api/events?when=thisWeek&type=WORKSHOP&limit=10`
+- **Success (200):** event cards.
+
+  ```json
+  { "success": true, "data": [ { "id": "cmuycrmu2…", "title": "Acoustic Night", "slug": "acoustic-night", "type": "CULTURAL", "status": "PUBLISHED", "startAt": "2026-10-13T11:30:00.000Z", "endAt": "2026-10-13T14:30:00.000Z", "venue": "Cafeteria Lawn", "bannerUrl": null, "capacity": 150, "registrationCount": 1, "registrationDeadline": null, "spotsLeft": 149, "club": { "id": "…", "name": "CU Cultural Club", "slug": "cu-cultural-club", "logoUrl": null } } ], "meta": { "limit": 20, "nextCursor": null } }
+  ```
+
+- **Errors:** 400 `VALIDATION_ERROR` (bad enum or date, or `dateFrom >= dateTo`), 429.
+
+#### `GET /api/events/calendar?month=YYYY-MM`
+
+Lightweight month view in the Dhaka calendar. Includes published, completed and cancelled events (so the UI can strike cancelled ones out). Returns at most 500 events.
+
+- **Auth:** none. **Cached:** tags `events` and `calendar`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "month": "2026-10", "events": [ { "id": "…", "title": "Debate 101: Parliamentary Format", "slug": "debate-101-parliamentary-format", "type": "WORKSHOP", "status": "PUBLISHED", "startAt": "…", "endAt": "…", "venue": "Room 305, Academic Building 1", "club": { "name": "CU Debating Society", "slug": "cu-debating-society" } } ] } }
+  ```
+
+- **Errors:** 400 (bad month).
+
+#### `GET /api/events/{slug}`
+
+The event page. Drafts return 404.
+
+- **Auth:** none. **Cached:** tags `events` and `event:{id}`. The `registration` block is computed live on each request.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "id": "…", "title": "Mock Interview Day", "description": "…", "capacity": 5, "registrationCount": 2, "spotsLeft": 3, "status": "PUBLISHED", "club": { "name": "CU Career Development Club", "category": "ACADEMIC", "description": "…" }, "registration": { "closesAt": "2026-10-21T04:00:00.000Z", "isOpen": true, "blocker": null } } }
+  ```
+
+- **Errors:** 400 (bad slug), 404 `NOT_FOUND`.
+
+#### `POST /api/events/{eventId}/register`
+
+Registers the signed-in user for an event.
+
+- **Auth:** cookie. **Headers:** `Origin`. **Rate limit:** `write`. **Body:** none.
+- **What happens:**
+  - The seat is claimed with one conditional `UPDATE … WHERE registrationCount < capacity` inside a transaction, so concurrent requests can never overbook. In testing, 10 parallel requests for 3 seats produced exactly 3 registrations and 7 `EVENT_FULL`.
+  - The user gets a fresh `qrToken` (`nanoid(32)`), an in-app notification, and a confirmation email (sent after the response) with the QR PNG attached.
+- **Success (201):**
+
+  ```json
+  { "success": true, "data": { "message": "You're registered. Your QR ticket has been emailed to you.", "registration": { "id": "cmuyd2b5t…", "status": "REGISTERED", "checkedInAt": null, "createdAt": "…", "event": { "id": "…", "title": "Acoustic Night", "registrationCount": 1, "…": "event card" } } } }
+  ```
+
+- **Errors:**
+
+  | Status | Code | When |
+  | --- | --- | --- |
+  | 400 | `VALIDATION_ERROR` | Bad id |
+  | 401 | `UNAUTHORIZED` | Not signed in |
+  | 403 | `FORBIDDEN` | Bad Origin |
+  | 404 | `NOT_FOUND` | Unknown event |
+  | 409 | `EVENT_NOT_OPEN` / `EVENT_ENDED` / `REGISTRATION_CLOSED` / `ALREADY_REGISTERED` / `EVENT_FULL` | See the module error codes above |
+  | 429 | `RATE_LIMITED` | Rate limit hit |
+
+#### `DELETE /api/events/{eventId}/register`
+
+Cancels the user's registration before the event starts and frees the seat.
+
+- **Auth:** cookie. **Headers:** `Origin`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "message": "Registration cancelled." } }
+  ```
+
+- **Errors:** 404 (no active registration), 409 (the event has started), 401, 403.
+
+#### `POST | DELETE /api/events/{eventId}/save`
+
+Bookmarks or un-bookmarks an event. Both calls are idempotent.
+
+- **Auth:** cookie. **Headers:** `Origin`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "saved": true, "eventId": "…" } }
+  ```
+
+- **Errors:** 404 (unknown or draft event), 401, 403.
+
+#### `GET /api/me/registrations`
+
+The user's registrations, newest first.
+
+- **Auth:** cookie. **Query:** `status?` (`REGISTERED|CHECKED_IN|CANCELLED`), `cursor?`, `limit?`. **Response header:** `Cache-Control: private, no-store`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": [ { "id": "…", "status": "CHECKED_IN", "checkedInAt": "…", "createdAt": "…", "event": { "title": "ICPC Dhaka Regional Prep Contest", "…": "event card" } } ], "meta": { "limit": 20, "nextCursor": null } }
+  ```
+
+- **Errors:** 401.
+
+#### `GET /api/me/registrations/{id}/qr`
+
+The owner's QR ticket. The QR encodes the opaque `qrToken`.
+
+- **Auth:** cookie. Only the owner can fetch it; anyone else gets 404.
+- **Query:** `format=json` (default) or `format=png`.
+- **Success (200), JSON:**
+
+  ```json
+  { "success": true, "data": { "registrationId": "…", "status": "REGISTERED", "qrDataUrl": "data:image/png;base64,iVBORw0KGgo…" } }
+  ```
+
+  With `format=png`, the response is `image/png` bytes.
+- **Errors:** 401; 404 (not found or not yours); 409 (cancelled).
+
+#### `GET /api/me/saved-events`
+
+The user's saved events, newest first.
+
+- **Auth:** cookie. **Query:** `cursor?`, `limit?`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": [ { "id": "…", "createdAt": "…", "event": { "…": "event card" } } ], "meta": { "limit": 20, "nextCursor": null } }
+  ```
+
+#### Admin: clubs (`/api/admin/clubs`)
+
+ADMIN and SUPER_ADMIN hold `clubs:manage`. A CLUB_ADMIN can list and edit only their own clubs. All mutations are audited and revalidate `clubs`, `club:{id}`, `events`, `calendar`, `forms` and `stats`.
+
+| Method & path | Permission | Body / query | Success |
+| --- | --- | --- | --- |
+| `GET /api/admin/clubs` | `events:manage` | `q?`, `includeInactive?`, `cursor?`, `limit?` | 200: list with `_count.events` |
+| `POST /api/admin/clubs` | `clubs:manage` | `{ "name": "CU Chess Club", "description": "…", "category": "OTHER", "slug?": "cu-chess-club", "logoUrl?": "<upload url>", "coverUrl?": "…", "isActive?": true }` | 201: the club (slug auto-generated if omitted) |
+| `PATCH /api/admin/clubs/{id}` | `events:manage` + club scope | Any create field. A CLUB_ADMIN may only change `description`, `logoUrl`, `coverUrl` and `category`. | 200: the club |
+| `DELETE /api/admin/clubs/{id}` | `clubs:manage` | none | 200: `{ "message": "Club deleted.", "id": "…" }` (soft delete) |
+
+Errors: 400 `VALIDATION_ERROR` (including a foreign or external `logoUrl`); 403 (missing permission, another club, or a forbidden field such as `"Club admins cannot change: name, isActive."`); 404; 409 (duplicate name or slug, or deleting a club that still has upcoming events).
+
+#### Admin: events (`/api/admin/events`)
+
+Requires `events:manage` (CLUB_ADMIN, ADMIN, SUPER_ADMIN). A CLUB_ADMIN only sees and manages their own clubs' events. Every mutation is audited and revalidates `events`, `calendar`, `stats` and `event:{id}`.
+
+| Method & path | Body / query | Success |
+| --- | --- | --- |
+| `GET /api/admin/events` | `status?`, `clubId?`, `q?`, `cursor?`, `limit?` | 200: events in any status, newest start first |
+| `POST /api/admin/events` | See the example below | 201: the event (`DRAFT`, or `PUBLISHED` with `"publish": true`) |
+| `GET /api/admin/events/{id}` | none | 200: the event, including `createdBy` |
+| `PATCH /api/admin/events/{id}` | Any field from the create body (all optional) | 200. If the time or venue of a published event changes, registrants are notified in-app and by bulk email. |
+| `POST /api/admin/events/{id}/publish` | none | 200: `DRAFT` → `PUBLISHED` |
+| `POST /api/admin/events/{id}/cancel` | `{ "reason": "Lab maintenance - we will reschedule soon." }` | 200: `CANCELLED`. Registrants are notified with the reason. |
+| `DELETE /api/admin/events/{id}` | none | 200 (soft delete). Refused (409) for a published event that has registrations; cancel it first. |
+
+Create body:
+
+```json
+{
+  "title": "Hands-on Git & GitHub Workshop",
+  "description": "Learn branching and pull requests…",
+  "clubId": "cmuybdpc5…",
+  "type": "WORKSHOP",
+  "startAt": "2026-11-02T15:00:00+06:00",
+  "endAt": "2026-11-02T18:00:00+06:00",
+  "venue": "Computer Lab 3",
+  "capacity": 60,
+  "registrationDeadline": "2026-11-01T23:59:00+06:00",
+  "bannerUrl": "https://<app>.ufs.sh/f/<key from /api/upload/image>",
+  "publish": false
+}
+```
+
+Errors:
+- 400 `VALIDATION_ERROR`: `endAt <= startAt`, a deadline after the start, an unknown or inactive club, a foreign or external `bannerUrl`, or unknown keys such as `status` or `registrationCount`.
+- 403: another club.
+- 404: unknown event.
+- 409: publishing a non-draft or an event that has ended, editing a cancelled or completed event, `capacity` below the current registrations, or deleting a published event that has registrations.
+
+Attendee notifications run after the response. In-app rows are inserted 1,000 at a time, and emails go out in Brevo `messageVersions` batches of 500.
+
+#### `GET /api/admin/events/{id}/registrations`
+
+A searchable attendee list.
+
+- **Permission:** `events:checkin`, with club scope. **Query:** `status?`, `q?` (name, email or student ID), `cursor?`, `limit?`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": [ { "id": "…", "status": "CHECKED_IN", "createdAt": "…", "checkedInAt": "…", "user": { "id": "…", "name": "Demo Student", "email": "…", "studentId": "CU-DEMO-001", "batch": "58", "department": { "code": "CSE" } } } ], "meta": { "limit": 20, "nextCursor": null } }
+  ```
+
+#### `GET /api/admin/events/{id}/registrations/export`
+
+Streams every registration as CSV, in batches of 1,000.
+
+- **Permission:** `events:manage`, with club scope. Moderators get 403.
+- **Success (200):** `text/csv; charset=utf-8` with a BOM for Excel and `Content-Disposition: attachment`. Columns: `Name, Email, Student ID, Department, Batch, Status, Registered At, Checked In At`. Cells are protected against formula injection (a leading `= + - @` is prefixed with `'`). The export is audited.
+
+#### `GET /api/admin/events/{id}/stats`
+
+Attendance numbers for one event.
+
+- **Permission:** `events:checkin`, with club scope.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "eventId": "…", "capacity": 40, "registered": 2, "checkedIn": 2, "cancelled": 1, "fillRate": 0.05, "noShowRate": null } }
+  ```
+
+  `noShowRate` is `(registered − checkedIn) / registered` and only appears once the event has ended.
+
+#### `POST /api/admin/checkin`
+
+Checks in an attendee by scanning their QR code.
+
+- **Permission:** `events:checkin`. MODERATOR, ADMIN and SUPER_ADMIN can check in at any event; a CLUB_ADMIN only at their own clubs. Access to the door's event is checked **before** the ticket is looked up. **Rate limit:** 240/min.
+- **Body:**
+
+  ```json
+  { "qrToken": "<32-char token decoded from the QR>", "eventId": "<event at this door>" }
+  ```
+
+- **Success (200):** the ticket moves `REGISTERED` → `CHECKED_IN` exactly once, through a conditional update, so racing scanners can't both succeed.
+
+  ```json
+  { "success": true, "data": { "registrationId": "…", "checkedInAt": "2026-10-07T17:11:06.887Z", "attendee": { "id": "…", "name": "Demo Student", "email": "…", "studentId": "CU-DEMO-001", "avatarUrl": null, "department": { "code": "CSE" } }, "event": { "id": "…", "title": "Live Demo Workshop" } } }
+  ```
+
+- **Errors:**
+
+  | Status | Code | When |
+  | --- | --- | --- |
+  | 400 | `VALIDATION_ERROR` | Bad token or id |
+  | 403 | `FORBIDDEN` | Another club's door |
+  | 404 | `TICKET_NOT_FOUND` | Unknown token |
+  | 409 | `WRONG_EVENT` / `REGISTRATION_CANCELLED` / `ALREADY_CHECKED_IN` (with `details.checkedInAt`) / `EVENT_NOT_ACTIVE` / `CHECKIN_NOT_OPEN` / `CHECKIN_CLOSED` | See the module error codes above |
+
+#### `POST /api/admin/events/{id}/registrations/{registrationId}/checkin`
+
+Manual check-in by registration id, for an attendee without their phone. It uses the same rules, response and errors as QR check-in.
+
+### Module 2: Resource hub
+
+#### `GET /api/departments`
+
+All departments with course counts.
+
+- **Auth:** none. **Cached:** tag `departments`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": [ { "id": "…", "code": "CSE", "name": "Computer Science & Engineering", "faculty": "Faculty of Science & Engineering", "_count": { "courses": 8 } } ] }
+  ```
+
+#### `GET /api/courses`
+
+Courses, ordered by semester and then code (at most 500).
+
+- **Auth:** none. **Cached:** tags `courses` and `department:{id}`. **Query:** `departmentId?`, `semester?` (1–12).
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": [ { "id": "…", "code": "CSE-3201", "title": "Operating Systems", "semester": 6, "credits": 3, "department": { "id": "…", "code": "CSE" } } ] }
+  ```
+
+#### `GET /api/resources`
+
+Lists and searches approved resources.
+
+- **Auth:** none. **Cached:** tag `resources`. **Rate limit:** `search` when `q` is set, otherwise `publicRead`.
+- **Query:**
+  - `q?` (search text).
+  - `departmentId?`, `courseId?`, `semester?`, `year?`, `type?` (`NOTES|QUESTION_PAPER|LAB_MANUAL|NOTICE|OTHER`).
+  - `sort`: `relevance` (default; falls back to `newest` without `q`), `newest` or `popular`.
+  - `cursor?`, `limit?`.
+
+  Example: `GET /api/resources?q=CSE%202101&departmentId=…&sort=relevance`
+- **Search:** one parameterized SQL query (`$queryRaw`; user text is never concatenated into SQL) that matches any of:
+  - weighted full-text search (title and tags weight A, description weight B), against the query and its synonym and acronym expansions (`prev` → previous, `dbms` → database management, `os` → operating systems…);
+  - `pg_trgm` `word_similarity` for typos (`algoritms` → *Algorithms*);
+  - punctuation-insensitive course codes (`CSE 2101` = `cse-2101` = `CSE2101`);
+  - course titles.
+
+  Results are ranked: an exact full-text match first, then an any-term match, then title similarity, then a course hit.
+- **Success (200):** `score` appears only for `sort=relevance` with a query. The file URL is **not** included; use the download endpoint.
+
+  ```json
+  { "success": true, "data": [ { "id": "…", "title": "CSE-2101 Class Test Questions (2023)", "description": "…", "type": "QUESTION_PAPER", "semester": 3, "year": 2023, "tags": ["cse-2101", "class test", "ct"], "fileSize": 1024, "downloadCount": 111, "bookmarkCount": 0, "isSample": true, "createdAt": "…", "department": { "id": "…", "code": "CSE", "name": "Computer Science & Engineering" }, "course": { "id": "…", "code": "CSE-2101", "title": "Data Structures" }, "score": 2.393 } ], "meta": { "limit": 20, "nextCursor": "eyJ2Ijo…" } }
+  ```
+
+- **Errors:** 400 `VALIDATION_ERROR` (bad filter, or a malformed `cursor`), 429.
+
+#### `GET /api/resources/{id}`
+
+The resource page. Only approved resources are visible.
+
+- **Auth:** none. **Cached:** tags `resources`, `resource:{id}`, `course:{id}` and `department:{id}`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "id": "…", "title": "…", "type": "QUESTION_PAPER", "fileSize": 1024, "mimeType": "application/pdf", "downloadCount": 113, "bookmarkCount": 0, "department": { "code": "CSE" }, "course": { "code": "CSE-2101", "title": "Data Structures", "semester": 3 }, "uploadedBy": { "name": "CampusOS Super Admin" } } }
+  ```
+
+- **Errors:** 400, 404 (unknown, pending, rejected or deleted).
+
+#### `POST /api/resources/{id}/download`
+
+Returns the file URL and counts the download, at most once per user per resource per 24 h.
+
+- **Auth:** cookie. **Headers:** `Origin`. **Rate limit:** `write`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "fileUrl": "https://wqsc48wcpm.ufs.sh/f/…", "downloadCount": 112 } }
+  ```
+
+- **Errors:** 401, 403, 404.
+
+#### `POST | DELETE /api/resources/{id}/bookmark`
+
+Bookmarks or un-bookmarks a resource. Both calls are idempotent; `bookmarkCount` only changes when a row is actually created or removed.
+
+- **Auth:** cookie. **Headers:** `Origin`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "bookmarked": true, "resourceId": "…" } }
+  ```
+
+- **Errors:** 401, 403, 404.
+
+#### `GET /api/me/bookmarks`
+
+Bookmarked resources that are still approved.
+
+- **Auth:** cookie. **Query:** `cursor?`, `limit?`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": [ { "id": "…", "createdAt": "…", "resource": { "id": "…", "title": "…", "type": "NOTES", "downloadCount": 12, "department": { "code": "CSE" }, "course": { "code": "CSE-3101", "title": "Database Management Systems" } } } ], "meta": { "limit": 20, "nextCursor": null } }
+  ```
+
+#### `POST /api/resources`
+
+Submits a resource. Upload the PDF first through the FileRouter.
+
+- **Auth:** cookie. **Headers:** `Origin`, `Content-Type: application/json`. **Rate limit:** `upload`.
+- **Body:** `courseId`, `semester`, `year`, `description` and `tags` (at most 10, lower-cased and de-duplicated) are optional.
+
+  ```json
+  {
+    "title": "DBMS Complete Notes (Normalization to Transactions)",
+    "description": "Typed notes covering ER modelling, normal forms, SQL and transactions.",
+    "type": "NOTES",
+    "departmentId": "…",
+    "courseId": "…",
+    "semester": 5,
+    "year": 2026,
+    "tags": ["dbms", "sql"],
+    "fileUrl": "https://<app>.ufs.sh/f/<key>",
+    "fileKey": "<key>",
+    "fileSize": 645,
+    "mimeType": "application/pdf"
+  }
+  ```
+
+- **Checks:**
+  - The URL is on a trusted host, and `fileKey` matches it.
+  - The key is tracked in `UploadedFile` as `PDF` and **owned by the caller**.
+  - `fileSize` and `mimeType` match what was recorded.
+  - The course belongs to the department.
+  - The file is not already attached to another resource.
+- **Success (201):** status is `PENDING` for students. Staff uploads are auto-`APPROVED` and revalidate the `resources` tags.
+
+  ```json
+  { "success": true, "data": { "message": "Thanks! Your resource is waiting for moderator review.", "resource": { "id": "…", "title": "…", "type": "NOTES", "status": "PENDING", "rejectionReason": null, "reviewedAt": null, "downloadCount": 0, "createdAt": "…", "department": { "code": "CSE" }, "course": { "code": "CSE-3101" } } } }
+  ```
+
+- **Errors:**
+
+  | Status | Code | When |
+  | --- | --- | --- |
+  | 400 | `VALIDATION_ERROR` | External or foreign file, size mismatch, course outside the department, or a bad field |
+  | 401 | `UNAUTHORIZED` | Not signed in |
+  | 403 | `FORBIDDEN` | Bad Origin |
+  | 409 | `CONFLICT` | The file is already used by another resource |
+  | 413 / 415 | | Body too large / not JSON |
+  | 429 | `RATE_LIMITED` | Rate limit hit |
+
+#### `GET /api/me/resources`
+
+The user's own uploads with their moderation status and rejection reason.
+
+- **Auth:** cookie. **Query:** `status?` (`PENDING|APPROVED|REJECTED`), `cursor?`, `limit?`.
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": [ { "id": "…", "title": "…", "type": "LAB_MANUAL", "status": "REJECTED", "rejectionReason": "Scanned pages are unreadable - please upload a clearer copy.", "reviewedAt": "…", "downloadCount": 0, "createdAt": "…", "department": { "code": "CE" }, "course": { "code": "CE-2201" } } ], "meta": { "limit": 20, "nextCursor": null } }
+  ```
+
+#### Admin: resource moderation (`resources:moderate`, held by MODERATOR, ADMIN and SUPER_ADMIN)
+
+Every mutation is audited. Approve, update and delete revalidate `resources`, `resource:{id}`, `course:{id}`, `department:{id}` and `stats`.
+
+| Method & path | Body / query | Success |
+| --- | --- | --- |
+| `GET /api/admin/resources` | `status` (default `PENDING`, oldest first), `departmentId?`, `q?`, `cursor?`, `limit?` | 200: items include `fileUrl` for previewing and `uploadedBy { name, email, studentId }` |
+| `PATCH /api/admin/resources/{id}/review` | `{ "decision": "APPROVE" }` or `{ "decision": "REJECT", "reason": "Scanned pages are unreadable." }` | 200: the resource. The uploader gets a notification and an email. |
+| `PATCH /api/admin/resources/{id}` | Any of `title`, `description`, `type`, `courseId`, `departmentId`, `semester`, `year`, `tags` | 200: the resource |
+| `DELETE /api/admin/resources/{id}` | none | 200: `{ "message": "Resource deleted.", "id": "…" }` (soft delete) |
+
+Errors: 400 (a reject without `reason`, a bad field, or a course outside the department); 403 (CLUB_ADMIN or student); 404; 409 (reviewing a resource that isn't `PENDING`).
+
+#### Admin: departments & courses (`academics:manage`, held by ADMIN and SUPER_ADMIN)
+
+| Method & path | Body | Success |
+| --- | --- | --- |
+| `POST /api/admin/departments` | `{ "code": "ARCH", "name": "Architecture", "faculty": "Faculty of Science & Engineering" }` (code is stored upper-case) | 201: the department |
+| `PATCH /api/admin/departments/{id}` | Any create field | 200 |
+| `DELETE /api/admin/departments/{id}` | none | 200. 409 if it is still referenced (`"Department is still referenced by: courses, resources, users."`) |
+| `POST /api/admin/courses` | `{ "code": "arch 1101", "title": "Basic Design Studio", "departmentId": "…", "semester": 1, "credits": 3 }` | 201. The code is stored canonically (`ARCH-1101`). |
+| `PATCH /api/admin/courses/{id}` | Any create field | 200 |
+| `DELETE /api/admin/courses/{id}` | none | 200. 409 if any resources use the course (notices are unlinked automatically). |
+
+Errors: 400 `VALIDATION_ERROR`; 403 (MODERATOR and below); 404; 409 (a duplicate code, or still in use). Every mutation revalidates `departments`, `courses`, `resources`, `notices`, `department:{id}` and `course:{id}`.
+
 ## Caching tag map
 
-Public data uses `"use cache"` + `cacheLife("max")` + `cacheTag(...)`. Mutations call the helpers in `src/lib/cache-tags.ts`, which use `revalidateTag(tag, "max")`. There is no time-based revalidation.
+How it works:
+- **Reads:** public data uses `"use cache"` + `cacheLife("max")` + `cacheTag(...)`. The fetchers live in `src/server/queries/*`.
+- **Writes:** every mutation calls a helper in `src/lib/cache-tags.ts`. The helpers call `revalidateTag(tag, { expire: 0 })`, which expires the entry immediately, so the next request re-renders from the database and nobody sees a cancelled event or a deleted resource. We tested `"max"` (stale-while-revalidate) first and it served one stale response after each mutation. Mutations are rare and hot counters only touch per-item detail tags, so the extra render is cheap.
+- **Time:** there is no time-based revalidation. Fetchers that depend on "now" (upcoming, this-week and past events, a club's next events) take an hour bucket as an argument, so the cache **key** changes at most hourly.
+- **Measured** (local `next start` → Neon us-east-2): `GET /api/events` took 577 ms on a cache miss and about 4 ms on a hit.
 
 | Tag | Covers | Invalidated by |
 | --- | --- | --- |
-| `events` | Event lists, upcoming events | `revalidateEvents()`, `revalidateClubs()` |
-| `event:{id}` | Single event page | `revalidateEvents(id)` |
-| `clubs` | Club directory | `revalidateClubs()` |
-| `club:{id}` | Single club page | `revalidateClubs(id)` |
+| `events` | Event lists, event pages, club pages' upcoming events | `revalidateEvents()`, `revalidateClubs()` (event create/update/publish/cancel/delete, club changes) |
+| `event:{id}` | One event's page (seat count) | `revalidateEvents(id)`, `revalidateEventDetail(id)` (register, cancel registration, check-in) |
+| `calendar` | `GET /api/events/calendar` | `revalidateEvents()`, `revalidateClubs()` |
+| `clubs` | Club directory and club pages | `revalidateClubs()` |
+| `club:{id}` | One club page | `revalidateClubs(id)` |
 | `forms` | Forms & deadlines listing | `revalidateForms()`, `revalidateClubs()` |
-| `resources` | Resource library lists and search | `revalidateResources()`, `revalidateAcademics()` |
-| `resource:{id}` | Single resource page | `revalidateResources(id)` |
-| `departments` / `courses` | Filters and dropdowns | `revalidateAcademics()` |
+| `resources` | Resource lists, search and detail | `revalidateResources()` (approve, staff upload, update, delete), `revalidateAcademics()` |
+| `resource:{id}` | One resource page (download and bookmark counts) | `revalidateResources(id)`, `revalidateResourceDetail(id)` (download, bookmark) |
+| `departments` / `courses` | `GET /api/departments`, `GET /api/courses` | `revalidateAcademics()` |
+| `department:{id}` / `course:{id}` | Course lists per department, resource pages in that course or department | `revalidateAcademics(refs)`, `revalidateResources(id, refs)` |
 | `notices` | Notice board | `revalidateNotices()`, `revalidateAcademics()` |
 | `notice:{id}` | Single notice | `revalidateNotices(id)` |
 | `buses` | Routes and timetables | `revalidateBuses()` |
@@ -561,7 +1147,11 @@ User-specific data (dashboards, notifications, my registrations, my complaints) 
 - JWT in an `httpOnly` cookie with `Secure` and `SameSite=Lax`. Token versioning allows revocation.
 - `.strict()` Zod validation on every endpoint, an Origin check on mutations, DB-backed rate limiting, and a honeypot plus optional Turnstile on public forms.
 - CSP, HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy` and `Permissions-Policy` are set in `next.config.ts`.
-- Uploads are checked by magic bytes and size, and images are re-encoded (stripping EXIF and polyglots).
+- Uploads are checked by magic bytes and size, and images are re-encoded (stripping EXIF and polyglots). PDFs are re-checked for `%PDF-` after upload.
+- **Upload provenance:** stored file URLs must be UploadThing URLs whose key is tracked in `UploadedFile` and owned by the caller, so forged or borrowed URLs are rejected.
+- **Club scoping:** a CLUB_ADMIN can manage and check in only at their own clubs. Check-in authorizes the door's event *before* looking up the ticket.
+- **Concurrency safety:** seats are claimed with one atomic conditional `UPDATE`, check-ins with a conditional status flip, and counters are moved only by real row changes.
+- CSV exports neutralize formula injection.
 - Generic error messages, a structured logger that redacts secrets, and an audit log for admin actions.
 
 ## Deployment
@@ -578,8 +1168,10 @@ Target: Vercel (Node.js runtime) with Neon.
 ```
 prisma/
   schema.prisma                 # full data model
-  migrations/                   # init + raw-SQL full-text search migration
+  migrations/                   # init, raw-SQL full-text search, event bookmarks + sample flag
+  seed.ts / seed-content.ts     # accounts + reference data / demo events, courses, resources
 prisma.config.ts                # Prisma 7 CLI config (DIRECT_URL, migrations, seed)
+scripts/cleanup-orphan-uploads.ts
 docs/ARCHITECTURE.md
 src/
   app/
@@ -596,12 +1188,17 @@ src/
   lib/auth/                     # session JWT, RBAC, password policy, OTP primitives (pure)
   proxy.ts                      # Next 16 proxy (ex-middleware): JWT-only route protection
   server/
-    services/                   # auth, user, otp, email (Brevo), audit
+    services/                   # auth, user, otp, email, audit, upload, club, event, registration, resource, academic, notification
+    queries/                    # tag-cached public reads ("use cache") for events, clubs, resources
+    domain/                     # pure rules: registration eligibility, check-in state machine
+    search/                     # parameterised resource search query builder
+    upload/                     # image pipeline (magic bytes → resize → compress)
     repositories/               # Prisma queries with safe selects
     validators/                 # strict Zod schemas
     middleware/                 # requireAuth/Role, rate limits, request & bot guards, cookies
     security/                   # rate-limiter core, client IP, form-timing token
     email/                      # branded email layout + templates
+  app/api/uploadthing/          # UploadThing FileRouter (pdfUploader)
   types/                        # shared types (API envelope)
 tests/unit/                     # vitest unit tests
 ```

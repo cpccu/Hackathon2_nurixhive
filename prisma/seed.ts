@@ -167,6 +167,9 @@ async function main(): Promise<void> {
     await prisma.$executeRaw`
       UPDATE "Club" c SET "memberCount" = (SELECT COUNT(*) FROM "ClubMember" m WHERE m."clubId" = c.id)`;
 
+    const { seedContent } = await import("./seed-content");
+    await seedContent(prisma, logger);
+
     logger.info("Seed completed");
   } finally {
     await prisma.$disconnect();
@@ -177,3 +180,6 @@ main().catch((error: unknown) => {
   process.stderr.write(`Seed failed: ${error instanceof Error ? error.message : String(error)}\n`);
   process.exit(1);
 });
+
+// Module scope: keeps `main` from clashing with other scripts during type-checking.
+export {};

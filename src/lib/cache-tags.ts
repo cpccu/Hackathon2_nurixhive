@@ -11,6 +11,7 @@ export const CacheTags = {
   // Events & clubs
   events: "events",
   event: (id: string) => `event:${id}`,
+  calendar: "calendar",
   clubs: "clubs",
   club: (id: string) => `club:${id}`,
   forms: "forms",
@@ -19,7 +20,9 @@ export const CacheTags = {
   resources: "resources",
   resource: (id: string) => `resource:${id}`,
   departments: "departments",
+  department: (id: string) => `department:${id}`,
   courses: "courses",
+  course: (id: string) => `course:${id}`,
 
   // Notices
   notices: "notices",
@@ -41,52 +44,92 @@ export const CacheTags = {
   stats: "stats",
 } as const;
 
-/** Stale-while-revalidate: visitors get the cached copy while the fresh one renders. */
-const REVALIDATE_PROFILE = "max";
+/**
+ * Immediate expiry: the next request after a mutation re-renders from the DB, so
+ * nobody ever sees a cancelled event or a deleted resource. (`"max"` would serve
+ * one stale response first.) Mutations are rare and hot counters only touch
+ * per-item detail tags, so the extra render is cheap.
+ */
+const EXPIRE_NOW = { expire: 0 };
 
-/** Revalidates every given tag. Use the domain helpers below in services. */
-export function revalidateTags(...tags: string[]): void {
+type MaybeTag = string | null | undefined | false;
+
+/** Expires every given tag (falsy entries are skipped, duplicates collapsed). */
+export function revalidateTags(...tags: MaybeTag[]): void {
   for (const tag of new Set(tags)) {
-    revalidateTag(tag, REVALIDATE_PROFILE);
+    if (tag) revalidateTag(tag, EXPIRE_NOW);
   }
 }
 
-/** List tag + optional detail tag + landing stats. */
-function revalidateCollection(listTag: string, detailTag?: string): void {
-  revalidateTags(listTag, CacheTags.stats, ...(detailTag ? [detailTag] : []));
-}
+// ───────────── Events & clubs ─────────────
 
+/** Event created/updated/published/cancelled/deleted: lists, calendar, detail, stats. */
 export const revalidateEvents = (id?: string) =>
-  revalidateCollection(CacheTags.events, id && CacheTags.event(id));
+  revalidateTags(CacheTags.events, CacheTags.calendar, CacheTags.stats, id && CacheTags.event(id));
+
+/**
+ * Hot counters (registrations, check-ins) only touch the event's detail page, so
+ * a busy registration window does not invalidate every list on every click.
+ */
+export const revalidateEventDetail = (id: string) => revalidateTags(CacheTags.event(id));
 
 /** Club changes also affect event cards (club name/logo) and form listings. */
-export const revalidateClubs = (id?: string) => {
-  revalidateCollection(CacheTags.clubs, id && CacheTags.club(id));
-  revalidateTags(CacheTags.events, CacheTags.forms);
-};
+export const revalidateClubs = (id?: string) =>
+  revalidateTags(
+    CacheTags.clubs,
+    CacheTags.events,
+    CacheTags.calendar,
+    CacheTags.forms,
+    CacheTags.stats,
+    id && CacheTags.club(id),
+  );
 
 export const revalidateForms = () => revalidateTags(CacheTags.forms);
 
-export const revalidateResources = (id?: string) =>
-  revalidateCollection(CacheTags.resources, id && CacheTags.resource(id));
+// ───────────── Resources & academics ─────────────
 
-/** Department/course renames appear on resources and notices. */
-export const revalidateAcademics = () =>
-  revalidateTags(CacheTags.departments, CacheTags.courses, CacheTags.resources, CacheTags.notices);
+export interface ResourceRefs {
+  courseId?: string | null;
+  departmentId?: string | null;
+}
+
+/** Resource approved/updated/deleted: lists, detail and the course/department views. */
+export const revalidateResources = (id?: string, refs: ResourceRefs = {}) =>
+  revalidateTags(
+    CacheTags.resources,
+    CacheTags.stats,
+    id && CacheTags.resource(id),
+    refs.courseId && CacheTags.course(refs.courseId),
+    refs.departmentId && CacheTags.department(refs.departmentId),
+  );
+
+/** Download/bookmark counters only touch the resource's detail page. */
+export const revalidateResourceDetail = (id: string) => revalidateTags(CacheTags.resource(id));
+
+/** Department/course create/rename/delete: dropdowns plus resources and notices that show them. */
+export const revalidateAcademics = (refs: ResourceRefs = {}) =>
+  revalidateTags(
+    CacheTags.departments,
+    CacheTags.courses,
+    CacheTags.resources,
+    CacheTags.notices,
+    refs.courseId && CacheTags.course(refs.courseId),
+    refs.departmentId && CacheTags.department(refs.departmentId),
+  );
+
+// ───────────── Other modules ─────────────
 
 export const revalidateNotices = (id?: string) =>
-  revalidateCollection(CacheTags.notices, id && CacheTags.notice(id));
+  revalidateTags(CacheTags.notices, CacheTags.stats, id && CacheTags.notice(id));
 
 /** Bus data also feeds chatbot answers (KB entries sourced from routes). */
-export const revalidateBuses = (id?: string) => {
-  revalidateCollection(CacheTags.buses, id && CacheTags.busRoute(id));
-  revalidateTags(CacheTags.kb);
-};
+export const revalidateBuses = (id?: string) =>
+  revalidateTags(CacheTags.buses, CacheTags.kb, CacheTags.stats, id && CacheTags.busRoute(id));
 
 export const revalidateKnowledgeBase = (id?: string) =>
-  revalidateCollection(CacheTags.kb, id && CacheTags.kbEntry(id));
+  revalidateTags(CacheTags.kb, CacheTags.stats, id && CacheTags.kbEntry(id));
 
 export const revalidateLostFound = (id?: string) =>
-  revalidateCollection(CacheTags.lostFound, id && CacheTags.lostFoundItem(id));
+  revalidateTags(CacheTags.lostFound, CacheTags.stats, id && CacheTags.lostFoundItem(id));
 
 export const revalidateStats = () => revalidateTags(CacheTags.stats);

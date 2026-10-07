@@ -36,6 +36,8 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   poweredByHeader: false,
+  // Native/dynamic-require packages must stay external to the server bundle.
+  serverExternalPackages: ["image-video-compressor", "fluent-ffmpeg", "ffmpeg-static", "ffprobe-static"],
   images: {
     formats: ["image/avif", "image/webp"],
     remotePatterns: [

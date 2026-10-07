@@ -71,7 +71,11 @@ export async function getEventBySlug(slug: string) {
 }
 ```
 
-**Writes.** Every service mutation (create, update, delete, status change, upload) calls the matching helper from `src/lib/cache-tags.ts`, for example `revalidateEvents(id)`. The helpers call `revalidateTag(tag, "max")`, which is stale-while-revalidate: the next visitor gets the cached page instantly and triggers a background refresh. Server Actions that need read-your-own-writes can use `updateTag` instead.
+**Writes.** Every service mutation (create, update, delete, status change, upload) calls the matching helper from `src/lib/cache-tags.ts`, for example `revalidateEvents(id)`. The helpers call `revalidateTag(tag, { expire: 0 })`, which expires the entry immediately, so the next visitor gets a fresh render.
+- We measured `"max"` (stale-while-revalidate) first. It served one stale response after each mutation (a just-cancelled event still listed, a seat count one behind), so we chose correctness.
+- Mutations are rare. Hot counters (registrations, downloads, bookmarks, check-ins) only expire the per-item detail tag (`event:{id}`, `resource:{id}`), never the lists.
+
+**"Now"-dependent reads.** "Upcoming" or "this week" can't be cached forever. These fetchers take an hour bucket (`hourBucket()`) as an argument, so the cache key rolls at most hourly. That is a key change, not time-based revalidation.
 
 **What is never cached:** anything that depends on the current user (dashboards, notifications, my registrations, my complaints) or on cookies or headers. Those render dynamically inside `<Suspense>`.
 
@@ -102,16 +106,39 @@ Every uploaded object gets an `UploadedFile` row (key, url, size, mime, kind, up
 
 | Kind | Flow |
 | --- | --- |
-| **Images** (event banners, club logos, lost & found photos, avatars) | 1. Client posts multipart to our API. 2. Server checks size limits and **magic bytes** (JPEG/PNG/WebP only). 3. `image-video-compressor` (sharp) re-encodes to WebP and strips EXIF, which also neutralizes polyglot files. 4. `UTApi.uploadFiles` (UploadThing, `UPLOADTHING_TOKEN`). 5. The returned URL and key are saved to `UploadedFile` and the owning record. |
-| **PDFs** (resources, notice attachments) | UploadThing `FileRouter` with auth middleware (role check, size limit). `onUploadComplete` re-validates the type, records `UploadedFile`, and the resource row starts in `PENDING` moderation. |
+| **Images** (event banners, club logos, lost & found photos, avatars) | `POST /api/upload/image` (`src/server/upload/image-pipeline.ts`): 1. Auth and rate limit. 2. Size of at most 4 MB, and **magic bytes** checked (JPEG/PNG/WebP/AVIF/GIF). 3. sharp resizes to the purpose's bounds if needed (EXIF orientation applied, written to a lossless intermediate). 4. `image-video-compressor` (`format: "auto"`, quality 80) picks the smallest of WebP/AVIF/JPEG and strips metadata, which also neutralizes polyglot files. If compression fails, the request fails; the raw file is never uploaded. 5. `UTApi.uploadFiles` with the compressed buffer. 6. An `UploadedFile` row is saved; if that insert fails, the object is deleted from UploadThing. |
+| **PDFs** (resources, notice attachments) | UploadThing `FileRouter` (`pdfUploader`, PDF only, 16 MB, 1 file). The middleware requires a session and applies a rate limit, and the browser uploads directly to UploadThing. `onUploadComplete` re-reads the first bytes (`%PDF-`), deletes non-PDFs, and records `UploadedFile` (owner = uploader). `POST /api/resources` then requires that tracked, owned key. |
 
 Only UploadThing hosts (`utfs.io`, `*.ufs.sh`) are allowed in `next/image` and the CSP.
+
+**Provenance.** `verifyUpload()` is the only way a URL gets into a URL column. It requires a trusted host, a key tracked in `UploadedFile`, a matching kind, and the caller as owner (admins may reuse any tracked image). Cleanup: `npm run uploads:cleanup` finds tracked files older than 24 h that no row references.
+
+**Runtime notes:**
+- Upload routes run on Node.js, which is Next 16's default. `export const runtime` is rejected when Cache Components are enabled.
+- `image-video-compressor` pins `sharp@^0.34`, while Next needs `^0.35`. Two libvips builds in one process crash with a GLib type error, so `package.json` `overrides` forces a single `sharp` 0.35.
+- In production, UploadThing calls `onUploadComplete` via the public `/api/uploadthing` URL.
 
 ## 6. Search
 
 - `pg_trgm` is enabled for typo-tolerant matching. GIN trigram indexes exist on `Resource.title` and `KnowledgeEntry.question`.
 - `Resource.searchVector` and `KnowledgeEntry.searchVector` are **STORED generated tsvector columns**, so Postgres keeps them current on every write. Weighting: title/question and tags/keywords get weight A, description/answer gets weight B. Each has a GIN index. They are defined in `prisma/migrations/*_fulltext_search` and declared as `Unsupported("tsvector") @default(dbgenerated())` in the schema, so Prisma sees no drift.
-- Queries go through `$queryRaw` with `websearch_to_tsquery('english', $1)` and `ts_rank`, always parameterized and never built with string concatenation.
+- Queries go through `$queryRaw` and are always parameterized, never built with string concatenation. Resource search is built by `src/server/search/resource-search.ts` (pure and unit-tested). It matches any of:
+  - full-text search against `websearch_to_tsquery` (strict) and an OR of `plainto_tsquery` per term, including synonyms and acronyms (`prev` → previous, `dbms` → database management);
+  - `word_similarity` on the title for typos;
+  - punctuation-insensitive course codes (`CSE 2101` = `cse-2101`);
+  - course titles.
+
+  Results are ranked: strict match ×2, then any-term match, then title similarity, then a course hit (+1). Pagination is keyset on `(score|createdAt|downloadCount, id)`.
+
+## 6b. Events: capacity and check-in
+
+- **Pure rules** live in `src/server/domain/`: `registrationBlocker` (status, end, deadline, duplicate, full) and `decideCheckIn` (the QR state machine). Both are unit-tested.
+- **Seat claim:** one `UPDATE "Event" SET "registrationCount" = "registrationCount" + 1 WHERE … AND (capacity IS NULL OR "registrationCount" < capacity)` runs inside the transaction that inserts the registration. Postgres row-locks the event, so seats can't be oversold. In testing, 10 parallel requests for 3 seats produced exactly 3 registrations and an exact counter. A duplicate insert (P2002) or a race rolls the counter back.
+- **Check-in:**
+  - The door's event is authorized first, so scanners from other clubs learn nothing.
+  - Then the state machine runs, and the ticket is flipped with `updateMany WHERE status = 'REGISTERED'`, so double scans can't both win.
+  - The door window runs from 3 h before the start to 3 h after the end.
+- **Attendee fan-out** on cancel or change runs in `after()`. Registrants are read in batches of 1,000, in-app notifications are inserted with `createMany`, and emails go out as Brevo `messageVersions` batches of 500.
 
 ## 7. Chatbot ("Ask CampusOS")
 

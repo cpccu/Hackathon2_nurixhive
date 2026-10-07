@@ -19,6 +19,8 @@ export const RATE_LIMITS = {
   otpPerEmail: { limit: 5, windowMs: 60 * MINUTE },
   /** Authenticated write endpoints per IP. */
   write: { limit: 60, windowMs: MINUTE },
+  /** File uploads per IP (CPU-heavy compression). */
+  upload: { limit: 20, windowMs: 10 * MINUTE },
   /** Search and chatbot per IP. */
   search: { limit: 30, windowMs: MINUTE },
   /** Public cached reads per IP (in-memory). */
