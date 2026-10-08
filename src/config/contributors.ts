@@ -66,7 +66,10 @@ export const CONTRIBUTORS: Contributor[] = [
     languages: ["Bangla (native)", "English (professional)"],
     email: "yeasaleh.contact@gmail.com",
     whatsapp: { display: "+880 1735-782467", digits: "8801735782467" },
-    links: [],
+    links: [
+      { label: "GitHub", href: "https://github.com/yeasaleh2002" },
+      { label: "LinkedIn", href: "https://www.linkedin.com/in/yea-saleh/" },
+    ],
   },
   {
     id: "fazle-rabbi",
@@ -88,6 +91,9 @@ export const CONTRIBUTORS: Contributor[] = [
     education: "B.Sc. in Computer Science & Engineering, City University (Batch 62, Day)",
     email: "rabbifazle.contact@gmail.com",
     whatsapp: { display: "+880 1736-208819", digits: "8801736208819" },
-    links: [],
+    links: [
+      { label: "GitHub", href: "https://github.com/Fazle-Rabbi72" },
+      { label: "LinkedIn", href: "https://linkedin.com/in/fazle-rabbi-852616252" },
+    ],
   },
 ];
