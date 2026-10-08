@@ -20,7 +20,7 @@ This guide covers automated checks (lint, types, unit tests, Playwright e2e) and
 
 **OTP without a real inbox.** The email service has a test-only hook (`src/server/services/mail-capture.ts`). When `E2E_MAIL_CAPTURE=1` **and** `NODE_ENV` is not `production`, outgoing email is appended to `.e2e/mail.jsonl` instead of going to Brevo. The tests read the newest message for an address and extract the 6-digit code from its subject. The hook cannot turn on in production, because `mailCaptureEnabled` checks `isProduction` first. `.e2e/` is git-ignored.
 
-**Test accounts.** A worker-scoped fixture (`tests/e2e/fixtures.ts`) signs up and verifies one fresh account through the API, logs in once, and reuses the session cookie for every authenticated test. This keeps the rate-limited auth endpoints (10 per 15 minutes per IP) well under the limit: about 6 calls per run, so avoid more than one full run every few minutes.
+**Test accounts.** A worker-scoped fixture (`tests/e2e/fixtures.ts`) signs up and verifies one fresh account through the API, logs in once, and reuses the session cookie for every authenticated test. This keeps the rate-limited auth endpoints (10 per 15 minutes per IP) well under the limit: about 6 calls per run. Staff accounts are logged in through `/api/auth/admin/login` using `ADMIN1..4_EMAIL/PASSWORD` from `.env` (never printed). Under the E2E flag only, the auth rate limit is raised to 500 so the larger suite does not lock itself out; in production it stays at 10.
 
 ### What is covered
 
@@ -28,6 +28,9 @@ This guide covers automated checks (lint, types, unit tests, Playwright e2e) and
 | --- | --- |
 | `auth.spec.ts` | Sign up through the form, enter the OTP, land on the dashboard, sign in again; wrong password inline error; guest redirect with `?next=` |
 | `events.spec.ts` | Open an event, register, see the QR ticket dialog, find it under *My tickets*, cancel; calendar view toggle |
+| `admin.spec.ts` | Role matrix for ADMIN, CLUB_ADMIN and MODERATOR (menu items, blocked route, API 403), students and anonymous users are refused, event lifecycle (draft, publish, appears on the public API, cancel with reason, delete), notice posted and deleted with the public board following, site banner and maintenance mode (503 for visitors, staff unaffected), live check-in by "find attendee", duplicate check-in, capacity-1 race with two simultaneous registrations, deactivated user with a live session, club-admin scope |
+| `edge.spec.ts` | Wrong OTP, unverified login, garbage session cookie, HTTP 429 message, offline submit and recovery, oversized and wrong-type uploads, IDOR (another student's ticket QR, complaint, notification), duplicate lost & found claim, unknown resource link |
+| `a11y.spec.ts` | axe-core WCAG 2.1 A/AA (serious and critical must be zero) on 15 public and 15 admin pages in light and dark mode; reduced-motion check |
 | `campus.spec.ts` | Resource search + *Previous questions* filter; upload-form validation; post a lost item and delete it; file a complaint and track the ticket; ask the chatbot a question |
 
 ### Running
@@ -39,7 +42,7 @@ npx playwright test auth.spec.ts       # one file
 npx playwright show-report             # last HTML report
 ```
 
-Requires a populated database (`npm run db:seed`) for the events and resources scenarios. The event test skips itself when no event is open for registration.
+Requires a populated database (`npm run db:seed`, which also creates the four staff accounts) for the events and resources scenarios. The event test skips itself when no event is open for registration.
 
 ### Known limits
 

@@ -17,7 +17,7 @@
   --surface-3: #e7eaf3;
   --fg: #0b1020;
   --fg-muted: #535d73; /* 6.4:1 on white */
-  --fg-subtle: #6b7489; /* 4.7:1 on white - AA */
+  --fg-subtle: #5c657a; /* 5.9:1 on white, >= 4.5:1 on tinted surfaces */
   --border: #e2e6ef;
   --border-strong: #cdd3e1;
 

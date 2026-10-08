@@ -14,7 +14,7 @@ const HIGHLIGHTS = [
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <div className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
-      <aside className="relative isolate hidden overflow-hidden bg-brand-gradient p-12 text-white lg:flex lg:flex-col xl:p-16" aria-label="About CampusOS">
+      <aside className="relative isolate hidden self-start overflow-hidden bg-brand-gradient p-12 text-white lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col xl:p-16" aria-label="About CampusOS">
         <div className="bg-grid absolute inset-0 -z-10 opacity-25" aria-hidden />
         <div className="grain absolute inset-0 -z-10" aria-hidden />
         <div className="absolute -right-32 -top-32 -z-10 size-96 rounded-full bg-white/10 blur-3xl" aria-hidden />
@@ -43,7 +43,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           <Logo className="lg:invisible" />
           <ThemeToggle />
         </header>
-        <main id="main" tabIndex={-1} className="flex flex-1 items-center justify-center px-4 pb-16 outline-none sm:px-6">
+        <main id="main" tabIndex={-1} className="flex flex-1 items-start justify-center px-4 pb-16 pt-4 outline-none sm:px-6 sm:pt-[min(8vh,5rem)]">
           <div className="w-full max-w-md 3xl:max-w-lg">{children}</div>
         </main>
       </div>

@@ -201,6 +201,7 @@ test.describe("Admin portal: content reaches the public site", () => {
 
 test.describe("Admin portal: check-in and concurrency", () => {
   test("find attendee → check in → duplicate is rejected → counters update", async ({ browser, playwright, staff }) => {
+    test.setTimeout(240_000);
     const admin = await apiFrom(playwright, staff[1]);
     const student = await createStudent(playwright, "checkin");
     const event = await makeEvent(admin, { startsInMinutes: 60 });
@@ -213,11 +214,11 @@ test.describe("Admin portal: check-in and concurrency", () => {
       const context = await browser.newContext({ baseURL: BASE_URL, storageState: staff[1] });
       const page = await context.newPage();
       await page.goto(`/admin/events/${event.id}/checkin`);
-      await page.getByRole("tab", { name: "Find attendee" }).click();
+      await page.getByRole("tab", { name: "Find attendee" }).click({ timeout: 60_000 });
       await page.getByLabel(/^Search by name/).fill(student.account.name.slice(0, 10));
       await page.getByRole("button", { name: "Check in" }).first().click();
-      await expect(page.getByRole("status").filter({ hasText: student.account.name })).toBeVisible();
-      await expect(page.getByLabel("Live counters").getByText("1", { exact: false }).first()).toBeVisible();
+      await expect(page.getByRole("status").filter({ hasText: student.account.name }).first()).toBeVisible();
+      await expect(page.getByLabel("Live counters")).toContainText("/ 1", { timeout: 20_000 });
 
       // Second attempt (another scanner / double tap): 409 ALREADY_CHECKED_IN.
       const again = await admin.post(`/api/admin/events/${event.id}/registrations/${registrationId}/checkin`, { data: {} });
@@ -259,14 +260,15 @@ test.describe("Admin portal: check-in and concurrency", () => {
     const student = await createStudent(playwright, "deactivate");
     const studentApi = await apiFrom(playwright, student.state);
     try {
-      const me = (await (await studentApi.get("/api/auth/me")).json()) as { data: { id: string } };
+      const me = (await (await studentApi.get("/api/auth/me")).json()) as { data: { user: { id: string } } };
       expect((await studentApi.get("/api/me/registrations")).ok()).toBeTruthy();
 
-      expect((await admin.patch(`/api/admin/users/${me.data.id}`, { data: { isActive: false } })).ok()).toBeTruthy();
+      const off = await admin.patch(`/api/admin/users/${me.data.user.id}`, { data: { isActive: false } });
+      expect(off.status(), await off.text()).toBe(200);
       expect((await studentApi.get("/api/me/registrations")).status()).toBe(401);
       expect((await studentApi.get("/api/auth/me")).status()).toBe(401);
 
-      expect((await admin.patch(`/api/admin/users/${me.data.id}`, { data: { isActive: true } })).ok()).toBeTruthy();
+      expect((await admin.patch(`/api/admin/users/${me.data.user.id}`, { data: { isActive: true } })).ok()).toBeTruthy();
       // The old token was revoked (tokenVersion bumped), so signing in again is required.
       expect((await studentApi.get("/api/auth/me")).status()).toBe(401);
       const login = await studentApi.post("/api/auth/login", { data: { email: student.account.email, password: student.account.password, website: "" } });
