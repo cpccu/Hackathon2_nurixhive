@@ -17,7 +17,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "uploads:cleanup": "tsx scripts/cleanup-orphan-uploads.ts",
-    "reminders:send": "tsx scripts/send-reminders.ts"
+    "reminders:send": "tsx scripts/send-reminders.ts",
+    "analyze": "next analyze",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
@@ -44,12 +46,12 @@
     "react-hook-form": "^7.89.0",
     "react-hot-toast": "^2.6.1",
     "sharp": "^0.35.5",
-    "swr": "^2.5.1",
     "tailwind-merge": "^3.7.0",
     "uploadthing": "^7.7.4",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^24.19.1",
     "@types/qrcode": "^1.5.6",

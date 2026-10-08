@@ -1,82 +1,99 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import { type ClipboardEvent, type KeyboardEvent, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 interface OtpInputProps {
-  length?: number;
   value: string;
   onChange: (value: string) => void;
+  length?: number;
   disabled?: boolean;
+  invalid?: boolean;
+  /** Called once all digits are entered. */
+  onComplete?: (value: string) => void;
+  autoFocus?: boolean;
 }
 
-export function OtpInput({ length = 6, value, onChange, disabled = false }: OtpInputProps) {
-  const [otp, setOtp] = useState<string[]>(new Array(length).fill(""));
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+/**
+ * One-time-code input: N single-digit boxes with auto-advance, backspace to the
+ * previous box, arrow keys, and full-code paste. Fully controlled by `value`.
+ */
+export function OtpInput({ value, onChange, length = 6, disabled, invalid, onComplete, autoFocus }: OtpInputProps) {
+  const refs = useRef<Array<HTMLInputElement | null>>([]);
+  const digits = Array.from({ length }, (_, i) => value[i] ?? "");
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
-    const val = e.target.value;
-    if (isNaN(Number(val))) return;
+  const focusBox = (index: number) => refs.current[Math.max(0, Math.min(length - 1, index))]?.focus();
 
-    const newOtp = [...otp];
-    newOtp[index] = val.substring(val.length - 1);
-    setOtp(newOtp);
-    onChange(newOtp.join(""));
+  const commit = (next: string) => {
+    const clean = next.replace(/\D/g, "").slice(0, length);
+    onChange(clean);
+    if (clean.length === length) onComplete?.(clean);
+  };
 
-    if (val && index < length - 1 && inputRefs.current[index + 1]) {
-      inputRefs.current[index + 1]?.focus();
+  const setDigit = (index: number, digit: string) => {
+    const chars = digits.slice();
+    chars[index] = digit;
+    commit(chars.join(""));
+  };
+
+  const onInput = (index: number, raw: string) => {
+    const digit = raw.replace(/\D/g, "").slice(-1);
+    if (!digit) return;
+    setDigit(index, digit);
+    if (index < length - 1) focusBox(index + 1);
+  };
+
+  const onKeyDown = (index: number, event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Backspace") {
+      event.preventDefault();
+      if (digits[index]) setDigit(index, "");
+      else if (index > 0) {
+        setDigit(index - 1, "");
+        focusBox(index - 1);
+      }
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      focusBox(index - 1);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      focusBox(index + 1);
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
-    if (e.key === "Backspace" && !otp[index] && index > 0 && inputRefs.current[index - 1]) {
-      inputRefs.current[index - 1]?.focus();
-    }
+  const onPaste = (event: ClipboardEvent<HTMLInputElement>) => {
+    const pasted = event.clipboardData.getData("text").replace(/\D/g, "").slice(0, length);
+    if (!pasted) return;
+    event.preventDefault();
+    commit(pasted);
+    focusBox(pasted.length >= length ? length - 1 : pasted.length);
   };
-
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    const pastedData = e.clipboardData.getData("text").slice(0, length).split("");
-    if (pastedData.some((char) => isNaN(Number(char)))) return;
-
-    const newOtp = [...otp];
-    pastedData.forEach((char, index) => {
-      newOtp[index] = char;
-    });
-    setOtp(newOtp);
-    onChange(newOtp.join(""));
-    
-    const focusIndex = Math.min(pastedData.length, length - 1);
-    inputRefs.current[focusIndex]?.focus();
-  };
-
-  React.useEffect(() => {
-    if (value) {
-      const chars = value.split("").slice(0, length);
-      const newOtp = new Array(length).fill("");
-      chars.forEach((c, i) => { newOtp[i] = c; });
-      setOtp(newOtp);
-    }
-  }, [value, length]);
 
   return (
-    <div className="flex gap-2 justify-center">
-      {otp.map((digit, index) => (
+    <div className="flex justify-center gap-2 sm:gap-3" role="group" aria-label={`${length}-digit verification code`}>
+      {digits.map((digit, index) => (
         <input
           key={index}
-          ref={(el) => { inputRefs.current[index] = el; }}
-          type="text"
-          inputMode="numeric"
-          maxLength={1}
+          ref={(el) => {
+            refs.current[index] = el;
+          }}
           value={digit}
+          onChange={(event) => onInput(index, event.target.value)}
+          onKeyDown={(event) => onKeyDown(index, event)}
+          onPaste={onPaste}
+          onFocus={(event) => event.target.select()}
+          inputMode="numeric"
+          autoComplete={index === 0 ? "one-time-code" : "off"}
+          pattern="[0-9]*"
+          maxLength={1}
           disabled={disabled}
-          onChange={(e) => handleChange(e, index)}
-          onKeyDown={(e) => handleKeyDown(e, index)}
-          onPaste={handlePaste}
+          autoFocus={autoFocus && index === 0}
+          aria-label={`Digit ${index + 1}`}
+          aria-invalid={invalid || undefined}
           className={cn(
-            "w-10 h-12 md:w-12 md:h-14 text-center text-lg md:text-xl font-bold rounded-lg border border-input bg-transparent",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-transparent",
-            "disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            "size-12 rounded-xl border border-border bg-surface text-center font-display text-xl font-bold text-fg shadow-xs transition sm:size-14 sm:text-2xl",
+            "focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/15",
+            digit && "border-primary/50 bg-primary-soft/40",
+            invalid && "border-danger focus:ring-danger/15",
           )}
         />
       ))}

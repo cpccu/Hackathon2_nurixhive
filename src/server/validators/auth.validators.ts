@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { OtpPurpose } from "@/generated/prisma/enums";
 import { passwordSchema } from "@/lib/auth/password";
+import { uploadUrlSchema } from "@/lib/upload-url";
 import { botFieldsShape } from "@/server/middleware/bot-protection";
 
 export const emailSchema = z.string().trim().toLowerCase().pipe(z.email("Enter a valid email address.").max(254));
@@ -55,6 +56,7 @@ export const updateProfileSchema = z
     department: departmentCodeSchema.nullable().optional(),
     batch: batchSchema.nullable().optional(),
     phone: phoneSchema.nullable().optional(),
+    avatarUrl: uploadUrlSchema.nullable().optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, { message: "Provide at least one field to update." });

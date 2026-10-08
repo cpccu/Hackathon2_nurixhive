@@ -1,81 +1,168 @@
-import toast from "react-hot-toast";
+import type { ApiMeta, ApiResponse } from "@/types/api";
 
-type ApiMeta = {
-  page?: number;
-  limit?: number;
-  nextCursor?: string | null;
-  total?: number;
-};
+/**
+ * Typed browser client for the CampusOS JSON API. Every endpoint returns the
+ * `{ success, data, error, meta }` envelope; this unwraps it, normalises
+ * failures into `ApiClientError`, and broadcasts 401s so the AuthProvider can
+ * redirect to /login?next=... (internal navigation stays in the router).
+ */
 
-export type ApiResponse<T = any> = {
-  success: boolean;
-  data?: T;
-  error?: { code: string; message: string; details?: any };
-  meta?: ApiMeta;
-};
+export const UNAUTHORIZED_EVENT = "campusos:unauthorized";
 
-type FetchOptions = RequestInit & {
-  showToastOnError?: boolean;
-  showToastOnSuccess?: string | boolean;
-};
-
-export class ApiError extends Error {
-  code: string;
-  details?: any;
-  constructor(message: string, code: string, details?: any) {
+export class ApiClientError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+    readonly status: number,
+    readonly details?: unknown,
+    readonly retryAfterSeconds?: number,
+  ) {
     super(message);
-    this.name = "ApiError";
-    this.code = code;
-    this.details = details;
+    this.name = "ApiClientError";
   }
 }
 
-async function fetcher<T>(url: string, options: FetchOptions = {}): Promise<T> {
-  const { showToastOnError = true, showToastOnSuccess = false, ...init } = options;
+type QueryValue = string | number | boolean | null | undefined;
 
+export interface RequestOptions {
+  query?: Record<string, QueryValue>;
+  body?: unknown;
+  signal?: AbortSignal;
+  headers?: HeadersInit;
+  /** Broadcast 401s (default true) so the app redirects to sign-in. */
+  notifyUnauthorized?: boolean;
+}
+
+export interface PageResult<T> {
+  data: T;
+  meta?: ApiMeta;
+}
+
+const FRIENDLY_MESSAGES: Record<string, string> = {
+  NETWORK_ERROR: "You seem to be offline. Check your connection and try again.",
+  UNAUTHORIZED: "Please sign in to continue.",
+  FORBIDDEN: "You don't have permission to do that.",
+  NOT_FOUND: "We couldn't find what you were looking for.",
+  INTERNAL_ERROR: "Something went wrong on our side. Please try again.",
+  EMAIL_DELIVERY_FAILED: "We couldn't send the email right now. Please try again in a moment.",
+};
+
+function buildUrl(path: string, query?: Record<string, QueryValue>): string {
+  if (!query) return path;
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
+  }
+  const qs = params.toString();
+  return qs ? `${path}${path.includes("?") ? "&" : "?"}${qs}` : path;
+}
+
+async function request<T>(method: string, path: string, options: RequestOptions = {}): Promise<PageResult<T>> {
+  const isForm = typeof FormData !== "undefined" && options.body instanceof FormData;
+  let response: Response;
   try {
-    const res = await fetch(url, {
-      ...init,
+    response = await fetch(buildUrl(path, options.query), {
+      method,
+      credentials: "same-origin",
+      signal: options.signal,
       headers: {
-        "Content-Type": "application/json",
-        ...init.headers,
+        Accept: "application/json",
+        ...(options.body !== undefined && !isForm ? { "Content-Type": "application/json" } : {}),
+        ...options.headers,
       },
+      body: options.body === undefined ? undefined : isForm ? (options.body as FormData) : JSON.stringify(options.body),
     });
-
-    const json = (await res.json()) as ApiResponse<T>;
-
-    if (!json.success || !res.ok) {
-      const errorMessage = json.error?.message || "An unexpected error occurred.";
-      const errorCode = json.error?.code || "UNKNOWN_ERROR";
-      
-      if (showToastOnError) {
-        toast.error(errorMessage);
-      }
-      
-      throw new ApiError(errorMessage, errorCode, json.error?.details);
-    }
-
-    if (showToastOnSuccess) {
-      toast.success(typeof showToastOnSuccess === "string" ? showToastOnSuccess : "Success!");
-    }
-
-    return json.data as T;
   } catch (error) {
-    if (error instanceof ApiError) {
-      throw error;
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw new ApiClientError(FRIENDLY_MESSAGES.NETWORK_ERROR, "NETWORK_ERROR", 0);
+  }
+
+  let json: ApiResponse<T> | null = null;
+  try {
+    json = (await response.json()) as ApiResponse<T>;
+  } catch {
+    // Non-JSON (e.g. proxy error page) handled below.
+  }
+
+  if (!response.ok || !json || !json.success) {
+    const code = json && !json.success ? json.error.code : response.status === 429 ? "RATE_LIMITED" : "INTERNAL_ERROR";
+    const message = json && !json.success ? json.error.message : FRIENDLY_MESSAGES[code] ?? `Request failed (${response.status}).`;
+    const retryAfter = Number(response.headers.get("retry-after")) || undefined;
+    if (response.status === 401 && options.notifyUnauthorized !== false && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
     }
-    const message = error instanceof Error ? error.message : "Network error";
-    if (showToastOnError) {
-      toast.error(message);
+    throw new ApiClientError(message, code, response.status, json && !json.success ? json.error.details : undefined, retryAfter);
+  }
+  return { data: json.data, meta: json.meta };
+}
+
+/** First field error from a VALIDATION_ERROR, if any. */
+function firstDetail(details: unknown): string | null {
+  if (!Array.isArray(details)) return null;
+  const first = details[0] as { message?: unknown } | undefined;
+  return typeof first?.message === "string" ? first.message : null;
+}
+
+/** Human-friendly message for any thrown value. */
+export function errorMessage(error: unknown): string {
+  if (error instanceof ApiClientError) {
+    if (error.code === "RATE_LIMITED") {
+      const wait = error.retryAfterSeconds;
+      const when = wait ? (wait >= 60 ? `${Math.ceil(wait / 60)} min` : `${wait} s`) : "a moment";
+      return `${error.message.replace(/\.$/, "")}. Try again in ${when}.`;
     }
-    throw new ApiError(message, "NETWORK_ERROR");
+    if (error.code === "VALIDATION_ERROR") return firstDetail(error.details) ?? error.message;
+    return error.message;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return "Something went wrong. Please try again.";
+}
+
+/** Field → message map for react-hook-form `setError` from a VALIDATION_ERROR. */
+export function fieldErrors(error: unknown): Record<string, string> {
+  if (!(error instanceof ApiClientError) || !Array.isArray(error.details)) return {};
+  const out: Record<string, string> = {};
+  for (const item of error.details as Array<{ path?: unknown; message?: unknown }>) {
+    if (typeof item.path === "string" && item.path && typeof item.message === "string" && !out[item.path]) {
+      out[item.path] = item.message;
+    }
+  }
+  return out;
+}
+
+export const api = {
+  get: <T>(path: string, options?: RequestOptions) => request<T>("GET", path, options).then((r) => r.data),
+  /** GET returning data + meta (cursor pagination). */
+  page: <T>(path: string, options?: RequestOptions) => request<T>("GET", path, options),
+  post: <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>("POST", path, { ...options, body }).then((r) => r.data),
+  patch: <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>("PATCH", path, { ...options, body }).then((r) => r.data),
+  delete: <T>(path: string, options?: RequestOptions) => request<T>("DELETE", path, options).then((r) => r.data),
+};
+
+/**
+ * Compatibility wrapper used by the admin console drafts:
+ * `apiClient.get(url, { showToastOnError })` etc. Errors are re-thrown; when
+ * `showToastOnError` is true (default) a toast is shown first.
+ */
+interface CompatOptions {
+  showToastOnError?: boolean;
+}
+
+async function withToast<T>(promise: Promise<T>, options?: CompatOptions): Promise<T> {
+  try {
+    return await promise;
+  } catch (error) {
+    if (options?.showToastOnError !== false) {
+      const { toast } = await import("react-hot-toast");
+      toast.error(errorMessage(error));
+    }
+    throw error;
   }
 }
 
 export const apiClient = {
-  get: <T>(url: string, options?: FetchOptions) => fetcher<T>(url, { ...options, method: "GET" }),
-  post: <T>(url: string, body: any, options?: FetchOptions) => fetcher<T>(url, { ...options, method: "POST", body: JSON.stringify(body) }),
-  put: <T>(url: string, body: any, options?: FetchOptions) => fetcher<T>(url, { ...options, method: "PUT", body: JSON.stringify(body) }),
-  patch: <T>(url: string, body: any, options?: FetchOptions) => fetcher<T>(url, { ...options, method: "PATCH", body: JSON.stringify(body) }),
-  delete: <T>(url: string, options?: FetchOptions) => fetcher<T>(url, { ...options, method: "DELETE" }),
+  get: <T>(path: string, options?: CompatOptions) => withToast(api.get<T>(path), options),
+  post: <T>(path: string, body?: unknown, options?: CompatOptions) => withToast(api.post<T>(path, body), options),
+  patch: <T>(path: string, body?: unknown, options?: CompatOptions) => withToast(api.patch<T>(path, body), options),
+  delete: <T>(path: string, options?: CompatOptions) => withToast(api.delete<T>(path), options),
 };

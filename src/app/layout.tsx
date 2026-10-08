@@ -1,45 +1,46 @@
-import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
-import { Toaster } from "react-hot-toast";
-import { ThemeProvider } from "@/components/theme-provider";
-import { defaultMetadata } from "@/config/seo";
-import dynamic from "next/dynamic";
+import type { Metadata, Viewport } from "next";
+import { Bricolage_Grotesque, Hind_Siliguri, Plus_Jakarta_Sans } from "next/font/google";
+import type { ReactNode } from "react";
+import { AppProviders } from "@/components/providers/app-providers";
+import { ChatbotLauncher } from "@/components/shared/chatbot/chatbot-launcher";
+import { CommandPaletteHost } from "@/components/shared/command-palette-trigger";
+import { JsonLd } from "@/components/shared/json-ld";
+import { organizationJsonLd, rootMetadata, websiteJsonLd } from "@/config/seo";
 import "./globals.css";
 
-const ChatbotWidget = dynamic(() => import("@/components/shared/chatbot-widget"), {
-  ssr: false,
-});
+const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-jakarta", display: "swap" });
+const bricolage = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-bricolage", display: "swap", weight: ["500", "600", "700", "800"] });
+const bangla = Hind_Siliguri({ subsets: ["bengali"], variable: "--font-bangla", display: "swap", weight: ["400", "500", "600"], preload: false });
 
-const plusJakartaSans = Plus_Jakarta_Sans({
-  variable: "--font-plus-jakarta-sans",
-  subsets: ["latin"],
-});
+export const metadata: Metadata = rootMetadata;
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f7f8fc" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b0d1a" },
+  ],
+};
 
-export const metadata: Metadata = defaultMetadata;
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${plusJakartaSans.variable} ${geistMono.variable} h-full antialiased`}
-      suppressHydrationWarning
-    >
-      <body className="min-h-full flex flex-col mesh-bg">
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
+    <html lang="en" className={`${jakarta.variable} ${bricolage.variable} ${bangla.variable}`} suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://utfs.io" crossOrigin="" />
+        <link rel="dns-prefetch" href="https://utfs.io" />
+      </head>
+      <body>
+        <a href="#main" className="skip-link">
+          Skip to content
+        </a>
+        <AppProviders>
           {children}
-          <ChatbotWidget />
-          <Toaster position="bottom-right" />
-        </ThemeProvider>
+          <CommandPaletteHost />
+          <ChatbotLauncher />
+        </AppProviders>
+        <JsonLd data={[organizationJsonLd(), websiteJsonLd()]} />
       </body>
     </html>
   );

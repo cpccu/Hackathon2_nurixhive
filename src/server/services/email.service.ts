@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import type { RenderedEmail } from "@/server/email/layout";
+import { captureEmail, mailCaptureEnabled } from "@/server/services/mail-capture";
 
 const BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email";
 const REQUEST_TIMEOUT_MS = 8_000;
@@ -86,6 +87,9 @@ export function sendEmail(
   tag: string,
   options: SendEmailOptions = {},
 ): Promise<SendEmailResult> {
+  if (mailCaptureEnabled) {
+    return captureEmail(to, email, tag).then(() => ({ ok: true as const }));
+  }
   const payload = {
     ...basePayload(email, tag),
     to: [recipient(to)],

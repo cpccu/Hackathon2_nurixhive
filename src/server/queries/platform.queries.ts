@@ -180,3 +180,33 @@ export async function getSitemapEntries(): Promise<SitemapEntry[]> {
     ...clubs.map((c) => ({ path: `/clubs/${c.slug}`, lastModified: c.updatedAt })),
   ];
 }
+
+// ───────────── Public landing stats ─────────────
+
+export interface PublicStats {
+  upcomingEvents: number;
+  resources: number;
+  clubs: number;
+  helpdeskAnswers: number;
+  busRoutes: number;
+}
+
+/**
+ * Headline counts for the landing page. Tagged with every source collection so
+ * any mutation refreshes them; keyed by the hour so "upcoming" rolls forward.
+ */
+export async function getPublicStats(nowBucket: string): Promise<PublicStats> {
+  "use cache";
+  cacheLife("max");
+  cacheTag(CacheTags.events, CacheTags.resources, CacheTags.clubs, CacheTags.kb, CacheTags.buses);
+
+  const now = new Date(nowBucket);
+  const [upcomingEvents, resources, clubs, helpdeskAnswers, busRoutes] = await Promise.all([
+    prisma.event.count({ where: { deletedAt: null, status: "PUBLISHED", endAt: { gte: now }, club: { isActive: true, deletedAt: null } } }),
+    prisma.resource.count({ where: { deletedAt: null, status: "APPROVED" } }),
+    prisma.club.count({ where: { deletedAt: null, isActive: true } }),
+    prisma.knowledgeEntry.count({ where: { deletedAt: null, isPublished: true } }),
+    prisma.busRoute.count({ where: { deletedAt: null, isActive: true } }),
+  ]);
+  return { upcomingEvents, resources, clubs, helpdeskAnswers, busRoutes };
+}

@@ -5,6 +5,7 @@ import { passwordChangedEmail } from "@/server/email/templates";
 import { type PublicUser, publicUserSelect, userRepository } from "@/server/repositories/user.repository";
 import type { SessionSubject } from "@/server/services/auth.service";
 import { sendEmailAfterResponse } from "@/server/services/email.service";
+import { verifyImageUploads } from "@/server/services/upload.service";
 import type { ChangePasswordInput, UpdateProfileInput } from "@/server/validators/auth.validators";
 
 /** Returns the signed-in user's profile (safe fields only). */
@@ -16,6 +17,7 @@ export async function getProfile(userId: string): Promise<PublicUser> {
 
 /** Updates editable profile fields. `null` clears an optional field. */
 export async function updateProfile(userId: string, input: UpdateProfileInput): Promise<PublicUser> {
+  if (input.avatarUrl) await verifyImageUploads([input.avatarUrl], "avatarUrl", userId);
   let departmentId: string | null | undefined = undefined;
   if (input.department === null) departmentId = null;
   else if (input.department !== undefined) {
@@ -30,6 +32,7 @@ export async function updateProfile(userId: string, input: UpdateProfileInput): 
       studentId: input.studentId,
       batch: input.batch,
       phone: input.phone,
+      avatarUrl: input.avatarUrl,
       departmentId,
     },
     select: publicUserSelect,

@@ -1,57 +1,60 @@
-import * as React from "react"
-import { Slot } from "@radix-ui/react-slot"
-import { cva, type VariantProps } from "class-variance-authority"
+import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
+import type { ComponentProps } from "react";
+import { cn } from "@/lib/utils";
+import { Spinner } from "@/components/ui/spinner";
 
-import { cn } from "@/lib/utils"
-
-const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+export const buttonVariants = cva(
+  "relative inline-flex shrink-0 select-none items-center justify-center gap-2 whitespace-nowrap rounded-xl font-semibold transition-[background-color,border-color,color,box-shadow,transform] duration-200 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-55 [&_svg]:size-[1.1em] [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default:
-          "bg-primary text-primary-foreground shadow hover:bg-primary/90",
-        destructive:
-          "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
-        outline:
-          "border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground",
-        secondary:
-          "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
+        primary: "bg-primary text-primary-fg shadow-sm hover:bg-primary-hover hover:shadow-glow",
+        accent: "bg-accent text-accent-fg shadow-sm hover:bg-accent-hover",
+        secondary: "border border-border bg-surface text-fg shadow-xs hover:border-border-strong hover:bg-surface-2",
+        outline: "border border-border-strong bg-transparent text-fg hover:bg-surface-2",
+        soft: "bg-primary-soft text-primary-soft-fg hover:brightness-95 dark:hover:brightness-125",
+        ghost: "text-fg-muted hover:bg-surface-2 hover:text-fg",
+        danger: "bg-danger text-white shadow-sm hover:brightness-110",
+        link: "h-auto rounded-md px-0 text-primary underline-offset-4 hover:underline active:scale-100",
+        gradient: "bg-brand-gradient text-white shadow-glow hover:brightness-110",
       },
       size: {
-        default: "h-9 px-4 py-2",
-        sm: "h-8 rounded-md px-3 text-xs",
-        lg: "h-10 rounded-md px-8",
-        icon: "h-9 w-9",
+        sm: "h-9 px-3.5 text-sm",
+        md: "h-11 px-5 text-sm",
+        lg: "h-13 px-7 text-base",
+        icon: "size-10",
+        "icon-sm": "size-8 rounded-lg",
       },
     },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  }
-)
+    defaultVariants: { variant: "primary", size: "md" },
+  },
+);
 
-export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
-  asChild?: boolean
+export interface ButtonProps extends ComponentProps<"button">, VariantProps<typeof buttonVariants> {
+  /** Render the child (e.g. a <Link>) with button styles. */
+  asChild?: boolean;
+  loading?: boolean;
 }
 
-const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : "button"
+export function Button({ className, variant, size, asChild, loading, disabled, children, type, ...props }: ButtonProps) {
+  if (asChild) {
     return (
-      <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
-        ref={ref}
-        {...props}
-      />
-    )
+      <Slot className={cn(buttonVariants({ variant, size }), className)} {...props}>
+        {children}
+      </Slot>
+    );
   }
-)
-Button.displayName = "Button"
-
-export { Button, buttonVariants }
+  return (
+    <button
+      type={type ?? "button"}
+      className={cn(buttonVariants({ variant, size }), className)}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      {...props}
+    >
+      {loading && <Spinner className="size-4" />}
+      {children}
+    </button>
+  );
+}

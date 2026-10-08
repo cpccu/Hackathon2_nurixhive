@@ -2,7 +2,7 @@
 
 One hub for campus life at City University (Bangladesh). Events and clubs, academic resources, notices, bus schedules, lost and found, complaints, and an "Ask CampusOS" assistant all live in one fast, mobile-first web app instead of being scattered across Facebook groups, Google Forms and notice boards.
 
-> **Status:** the backend is complete: auth and security, uploads, Module 1 (Clubs & Events), Module 2 (Resource Hub), Module 3 (Smart Helpdesk & grounded chatbot), Module 4 (Lost & Found + Complaints), notices, forms, bus schedule, global search, notifications and admin analytics. The UI comes in later tasks.
+> **Status:** the backend is complete (auth and security, uploads, Modules 1 to 4, notices, forms, bus schedule, search, notifications, admin analytics). The public site, auth pages and user portal are built. The admin console shell is in place; its module screens come next.
 
 ---
 
@@ -484,7 +484,7 @@ Returns the signed-in user.
 Updates the signed-in user's profile.
 
 - **Auth:** cookie. **Headers:** `Origin`, `Content-Type: application/json`. **Rate limit:** `write`.
-- **Body:** every field is optional, and `null` clears it. `name`, `studentId`, `department` (code), `batch` and `phone` are allowed. Role, email and verification status cannot be changed here.
+- **Body:** every field is optional, and `null` clears it. `name`, `studentId`, `department` (code), `batch`, `phone` and `avatarUrl` are allowed. `avatarUrl` must be your own image upload (`/api/upload/image` with `purpose=avatar`); a foreign or external URL returns `400 VALIDATION_ERROR`. Role, email and verification status cannot be changed here.
 
 ```json
 { "name": "Rahim Uddin", "phone": "+8801711000000", "department": "EEE" }
@@ -1759,19 +1759,26 @@ prisma/
 prisma.config.ts                # Prisma 7 CLI config (DIRECT_URL, migrations, seed)
 scripts/cleanup-orphan-uploads.ts, scripts/send-reminders.ts
 vercel.json                     # daily reminder cron
-docs/ARCHITECTURE.md
+docs/ARCHITECTURE.md, docs/TESTING.md
+playwright.config.ts            # e2e on port 3100 with the test-only mail hook
 src/
   app/
     (public)/                   # cached public pages
     (auth)/                     # login, signup, OTP, reset
     (user)/                     # signed-in student area
-    admin/                      # admin console
+    admin/login                 # staff sign-in (outside the console shell)
+    admin/(console)/            # admin console (client-guarded, role-aware shell)
     api/                        # Route Handlers (JSON API)
-  components/{ui,layout,shared,features}
+  components/ui/                # design-system primitives (Button, Dialog, DataTable, ListView…)
+  components/layout/            # site header/footer, user shell, page header, transitions
+  components/shared/            # logo, theme toggle, Ctrl+K palette, chatbot, JSON-LD
+  components/features/          # domain widgets: auth, events, clubs, resources, bus, notices, lost-found, complaints, dashboard
+  components/admin/             # admin shell + QR check-in scanner
+  components/providers/         # AppProviders, AuthProvider
   config/public-env.ts          # browser-safe NEXT_PUBLIC_* config
   config/chatbot-synonyms.ts    # English/Banglish/Bangla vocabulary → canonical search terms
   generated/prisma/             # Prisma client (generated, git-ignored)
-  hooks/
+  hooks/                        # useCursorList, useUrlFilters, useCountdown, useDebounce…
   lib/                          # env, prisma, logger, errors, api-response, cache-tags
   lib/auth/                     # session JWT, RBAC, password policy, OTP primitives (pure)
   proxy.ts                      # Next 16 proxy (ex-middleware): JWT-only route protection
@@ -1793,13 +1800,80 @@ src/
   app/api/uploadthing/          # UploadThing FileRouter (pdfUploader)
   types/                        # shared types (API envelope)
 tests/unit/                     # vitest unit tests
+tests/e2e/                      # Playwright specs + fixtures
 ```
 
 ## Frontend Architecture
 
-- **Data Layer:** Client-side data fetching uses `SWR` or `React Query` patterns, abstracted through `api-client.ts`. Server-side data uses Next.js 16 cache strategies with tag invalidation (`revalidateTag`). All API calls are enveloped in a robust `ApiResponse` type.
-- **Design System ("Campus-Tech"):** Built using Tailwind CSS v4 variables with a custom deep indigo/emerald palette. Modern UI with glassmorphism, rounded-2xl cards, mesh gradient hero backgrounds, and a refined `Plus Jakarta Sans` typography. Includes excellent automatic/persisted dark mode and light mode without flash.
-- **Component Library (`src/components/ui`):** Reusable and modular components adhering to accessibility and WCAG AA contrast standards.
-  - Developed components: Button, Card, Input, OtpInput, ThemeProvider, ChatbotWidget (lazy-loaded).
-  - Planned extensions: Textarea, Select, Checkbox, Modal/Dialog, DataTable, Toast wrapper (react-hot-toast).
-- **SEO & Performance:** A massive 500+ dynamic SEO keyword list (`src/config/seo-keywords.ts`) mapped across the platform. Comprehensive Open Graph metadata mapping, canonical URLs, and Next.js `metadata` API integration. Performance ensured by `next/font`, `next/dynamic`, lazy loaded assets, optimized First Load JS, and strict client component scoping.
+**Rendering model.** Next.js 16 with Cache Components. Static shells (hero, module cards, FAQ preview) are prerendered. Live sections (stats, this-week events, next bus, notices ticker) call `await connection()` inside `<Suspense>` and stream in. Public read data comes from `"use cache"` fetchers tagged via `src/lib/cache-tags.ts`. There is no time-based `revalidate`. Every mutation calls the matching `revalidateTag` helper. `getPublicStats()` (in `src/server/queries/platform.queries.ts`) is a server-side cached fetcher, not an HTTP endpoint, so it has no API reference entry.
+
+**Route groups.**
+
+| Group | Purpose | Chrome |
+|---|---|---|
+| `(public)` | Landing, events, clubs, resources, bus, notices, forms, helpdesk, lost & found, search | Glass navbar, mobile drawer, footer |
+| `(auth)` | `/login`, `/signup`, `/verify-email`, `/forgot-password`, `/reset-password` | Split-screen brand panel |
+| `(user)` | `/dashboard/*` | Sidebar (lg+), bottom tab bar (mobile), notification bell, profile menu |
+| `admin/login` | Staff-only sign-in, visually distinct dark page | None |
+| `admin/(console)` | Admin console | Collapsible role-aware sidebar, topbar, mobile drawer |
+
+Each group has its own `template.tsx` (Framer Motion page transition) and `loading.tsx` skeleton. Global files: `not-found.tsx`, `error.tsx`, `global-error.tsx`, `manifest.ts`, `robots.ts`, `opengraph-image.tsx`, icons.
+
+**Data layer.** `src/lib/api-client.ts` is a typed fetch client for the response envelope (`api.get/page/post/patch/delete`). It throws `ApiClientError` with `code`, `status` and `retryAfterSeconds`, turns network failures into `NETWORK_ERROR`, and emits a 401 event that `AuthProvider` handles. TanStack Query holds client state, with central keys in `src/lib/query-client.ts`. `AuthProvider` / `useAuth()` / `useRequireUser()` expose the session. Guards run in `proxy.ts` (cookie check, `?next=` redirect) and again client-side in the user and admin shells. `safeNext()` rejects open redirects.
+
+**Design system ("Campus-Tech").** Tailwind v4 tokens are declared in `src/app/globals.css` (`@theme inline`). The palette is deep indigo with an emerald accent. Surfaces use glassmorphism, mesh and grain backgrounds. Fonts are loaded through `next/font`: Plus Jakarta Sans (body), Bricolage Grotesque (display) and Hind Siliguri (Bangla). Type scale uses `clamp()` so layouts hold from 360 px to 3840 px with no horizontal scroll. Light, dark and system themes come from `next-themes` and are persisted without a flash. Contrast follows WCAG AA, with visible focus rings, a skip link and `prefers-reduced-motion` respected (`MotionConfig reducedMotion="user"`). Framer Motion runs through `LazyMotion` (`domAnimation`, strict `m.*` components).
+
+**Component library.**
+
+- `src/components/ui`: Button, Input, Textarea, Select, Combobox, Checkbox/Switch (`choice`), OtpInput, PasswordInput (strength meter), Field, Card, Badge, Avatar, Tabs (`layoutId` indicator), Dialog/Sheet, DropdownMenu, Tooltip, Accordion, Progress, Skeleton (shimmer), Spinner, EmptyState/ErrorState, InfiniteList, DataTable, ImageDropzone/PdfDropzone, ImageWithFallback, SearchBar, StatCard/CountUp, Timeline, QRCode, ConfirmDialog, Breadcrumbs.
+- `src/components/shared`: Logo, ThemeToggle, Ctrl+K command palette, chatbot launcher and panel, `JsonLd`.
+- `src/components/layout`: SiteHeader, SiteFooter, UserShell, NotificationBell, UserMenu, PageTransition.
+- `src/components/features/*`: domain widgets (auth forms, event card, bus countdown, landing sections).
+- `src/components/admin`: AdminShell and the QR check-in scanner.
+
+Every mutation shows a toast (`toastPromise` wraps `toast.promise`). Uploads: images go to `/api/upload/image` (server-side compression), PDFs go through the UploadThing client, with progress shown in both.
+
+**Bot protection on forms.** Sign-up and forgot-password fetch a signed `formToken` from `/api/security/form-token`. The client waits out the minimum age before submitting. A hidden `website` honeypot field is included. See `useFormToken` and `Honeypot` in `auth-form-kit.tsx`.
+
+**SEO.** `src/config/seo.ts` builds per-page metadata: canonical URL, `hreflang`-ready alternates, Open Graph and Twitter cards. It also provides JSON-LD builders: Organization, WebSite with SearchAction, EducationalOrganization, Event, BreadcrumbList and FAQPage. `src/config/seo-keywords.ts` holds 585 unique English, Banglish and Bangla keywords in per-page groups (core, home, events, clubs, resources, helpdesk, bus, notices, forms, lost & found, complaints, auth, search). `keywordsFor(groups)` merges the groups a page needs. Each page renders exactly one `h1`. Private pages (dashboard, verify, reset, admin) are `noindex`, and `robots.ts` disallows them.
+
+**Performance.** The command palette and chatbot panel are dynamically imported on first intent. QR and PDF viewers are lazy. `lucide-react` and `date-fns` use `optimizePackageImports`. The page preconnects to the UploadThing CDN. Run `npm run analyze` for the bundle report.
+
+## User portal and public pages
+
+### Page map
+
+| Area | Route | Notes |
+| --- | --- | --- |
+| Landing | `/` | Live stats, this-week events, next-bus widget, notices ticker, module cards, FAQ preview |
+| Events | `/events`, `/events/[slug]`, `/clubs`, `/clubs/[slug]` | Grid, list and month-calendar views, URL-synced filters, countdown, capacity bar, optimistic register or cancel, QR ticket, `.ics` and Google Calendar, share, related events, Event JSON-LD |
+| Resources | `/resources`, `/resources/[id]` | Sidebar filters (sheet on mobile), typo-tolerant search with highlighting, "Previous questions" shortcut, lazy PDF preview, download, bookmark, report |
+| Helpdesk | `/helpdesk`, `/helpdesk/[id]` | Category chips with counts, highlighted search, accordion answers, *Was this helpful?*, *Ask the assistant*, FAQPage JSON-LD |
+| Bus | `/bus`, `/bus/[code]` | Next-bus finder with a live Dhaka-time countdown, stops timeline, today's timetable |
+| Notices and forms | `/notices`, `/notices/[id]`, `/forms` | Pinned and urgent first, class cancellations in red, deadline countdowns |
+| Lost and found | `/lost-found`, `/lost-found/new`, `/lost-found/[id]` | Lost/Found tabs, multi-photo post, claim flow, match suggestions, reporter tools (approve or reject claims, mark returned, reopen, delete) |
+| Complaints | `/complaints/new`, `/complaints/track`, `/dashboard/complaints[/ticketNo]` | Anonymous option, ticket success screen, owner timeline, track by ticket + email |
+| Search | `/search`, Ctrl+K | One grouped search over events, resources, notices, helpdesk and lost & found |
+| Dashboard | `/dashboard`, `/registrations`, `/saved-events`, `/bookmarks`, `/my-resources`, `/resources/upload`, `/lost-found`, `/complaints`, `/notifications`, `/profile` | Guarded by `proxy.ts` and the client shell |
+
+### Interaction rules
+
+- **Every mutation shows a toast** (`toastPromise`: loading, then success or a mapped API error).
+- **Optimistic updates with rollback:** register or cancel, save event, bookmark, follow.
+- **Server cache:** the backend calls `revalidateTag` in each mutation. After a mutation the client invalidates the matching TanStack Query keys and calls `router.refresh()` where a Server Component shows the same data.
+- **Errors:** 401 sends guests to `/login?next=…`, 403 and 404 show friendly states, 429 shows the retry hint, and offline shows an offline panel with *Try again*.
+- **Filters live in the URL**, so a filtered view can be shared and the back button works.
+- **Known gaps:** helpdesk *Was this helpful?* is acknowledged on the client only (no endpoint stores FAQ votes; chatbot answers do store feedback). *Report resource* files a complaint in the `OTHER` category, since there is no dedicated report endpoint.
+
+### Real-world usability
+
+1. **Rahim, first-year, missed the bus notice.** He opens `/` on his phone. The ticker shows an urgent notice, the next-bus widget says *R2 to campus in 12 min*, and the 360 px layout needs no zooming.
+2. **Nusrat wants old DBMS questions before the midterm.** She types `dbms prev` in `/resources`. Synonym expansion and typo tolerance find *Database Management Systems - Previous Questions*. She bookmarks it and downloads the PDF in two taps.
+3. **A club member registers for a workshop.** On the event page, a countdown and a seats bar show urgency. One tap on *Register now* gives a QR ticket right away (optimistic), plus a calendar download. At the door, the admin scans it.
+4. **Lost ID card.** Tanvir posts a *Found* item with two photos. The system suggests the matching *Lost* post. The owner claims it with proof, Tanvir approves, and only then does the owner see his contact details.
+5. **Sensitive complaint.** A student files a harassment complaint with *Hide my identity* on. She gets ticket `CU-2026-000123` and tracks its timeline without ever being named to staff.
+6. **Night-before panic.** Someone asks the assistant in Banglish, *"exam er seat plan kothay?"*. If the knowledge base cannot answer confidently, the assistant says so and the question is logged for admins.
+
+### Quality checks
+
+See [`docs/TESTING.md`](docs/TESTING.md) for the e2e suite (signup with OTP, login, event registration with QR, resource search, lost item post, complaint submit and track, chatbot question) and the manual release checklist.

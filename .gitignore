@@ -58,3 +58,4 @@ Thumbs.db
 tmp/
 .turbo
 .bundle-analyze/
+.e2e/

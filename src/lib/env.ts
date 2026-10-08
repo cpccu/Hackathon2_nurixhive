@@ -55,6 +55,8 @@ const envSchema = z.object({
   LLM_API_KEY: optionalString,
   TURNSTILE_SECRET_KEY: optionalString,
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: optionalString,
+  /** Test-only: "1" writes outgoing email to .e2e/mail.jsonl instead of Brevo. Ignored when NODE_ENV=production. */
+  E2E_MAIL_CAPTURE: z.preprocess(blankToUndefined, z.enum(["0", "1"]).optional()),
 
   // Seed-only credentials (prisma/seed.ts).
   ADMIN1_EMAIL: optionalEmail,

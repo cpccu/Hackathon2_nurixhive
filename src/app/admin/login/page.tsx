@@ -1,78 +1,51 @@
-"use client";
+import { ShieldCheck } from "lucide-react";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { Suspense } from "react";
+import { AuthCardSkeleton } from "@/components/features/auth/auth-card";
+import { LoginForm } from "@/components/features/auth/login-form";
+import { Logo } from "@/components/shared/logo";
+import { ThemeToggle } from "@/components/shared/theme-toggle";
+import { buildMetadata } from "@/config/seo";
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { apiClient } from "@/lib/api-client";
-import { useRouter } from "next/navigation";
-import { Shield } from "lucide-react";
+export const metadata: Metadata = buildMetadata({
+  title: "Staff sign in",
+  description: "Restricted sign-in for CampusOS administrators and moderators.",
+  path: "/admin/login",
+  noIndex: true,
+});
 
 export default function AdminLoginPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    try {
-      await apiClient.post("/api/auth/login", { email, password }, { showToastOnSuccess: "Welcome back, Admin!" });
-      router.push("/admin/dashboard");
-    } catch (error) {
-      // handled by apiClient
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
-    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-zinc-950">
-      <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:50px_50px]" />
-      <Card className="w-full max-w-md border-zinc-800 bg-zinc-900/50 shadow-2xl backdrop-blur-xl relative z-10 text-zinc-100">
-        <CardHeader className="space-y-2 text-center">
-          <div className="mx-auto h-12 w-12 rounded-lg bg-zinc-800 flex items-center justify-center border border-zinc-700 mb-4">
-            <Shield className="h-6 w-6 text-emerald-400" />
+    <div className="relative isolate grid min-h-dvh place-items-center overflow-hidden bg-[#070816] px-4 py-10 text-white">
+      <div aria-hidden className="absolute inset-0 -z-10 bg-[radial-gradient(60%_50%_at_50%_0%,rgba(16,185,129,0.22),transparent),radial-gradient(50%_40%_at_100%_100%,rgba(99,102,241,0.28),transparent)]" />
+      <div aria-hidden className="bg-grid absolute inset-0 -z-10 opacity-[0.12]" />
+      <div className="absolute right-4 top-4">
+        <ThemeToggle />
+      </div>
+      <main id="main" tabIndex={-1} className="w-full max-w-md">
+        <div className="mb-8 flex justify-center">
+          <Logo inverted href={null} />
+        </div>
+        <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-6 shadow-2xl backdrop-blur-xl sm:p-8 [&_label]:text-white [&_input]:bg-white/10 [&_input]:text-white">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-300">
+            <ShieldCheck className="size-3.5" /> Staff access only
+          </span>
+          <h1 className="mt-4 font-display text-h2 font-bold">Admin console</h1>
+          <p className="mt-2 text-sm text-white/70">Sign in with your staff account. All actions are audit-logged.</p>
+          <div className="mt-6">
+            <Suspense fallback={<AuthCardSkeleton />}>
+              <LoginForm variant="staff" />
+            </Suspense>
           </div>
-          <CardTitle className="text-2xl font-bold tracking-tight text-white">Admin Portal</CardTitle>
-          <CardDescription className="text-zinc-400">
-            Authorized staff only. Please sign in to continue.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium leading-none text-zinc-300" htmlFor="email">Admin Email</label>
-              <Input 
-                id="email" 
-                type="email" 
-                placeholder="admin@cityuniversity.edu.bd" 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required 
-                disabled={isLoading}
-                className="bg-zinc-800/50 border-zinc-700 text-white placeholder:text-zinc-500 focus-visible:ring-emerald-500"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium leading-none text-zinc-300" htmlFor="password">Password</label>
-              <Input 
-                id="password" 
-                type="password" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required 
-                disabled={isLoading}
-                className="bg-zinc-800/50 border-zinc-700 text-white focus-visible:ring-emerald-500"
-              />
-            </div>
-            <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white border-0" type="submit" disabled={isLoading}>
-              {isLoading ? "Authenticating..." : "Sign in securely"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+        </div>
+        <p className="mt-6 text-center text-sm text-white/60">
+          Not staff?{" "}
+          <Link href="/login" className="font-semibold text-emerald-300 hover:underline">
+            Student sign in
+          </Link>
+        </p>
+      </main>
     </div>
   );
 }

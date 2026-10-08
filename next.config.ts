@@ -14,7 +14,8 @@ const contentSecurityPolicy = [
   `img-src 'self' data: blob: ${UPLOAD_HOSTS.join(" ")}`,
   "font-src 'self' data:",
   `connect-src 'self' https://*.uploadthing.com https://*.ingest.uploadthing.com ${UPLOAD_HOSTS.join(" ")}`,
-  `frame-src ${TURNSTILE_HOST}`,
+  // UploadThing hosts: inline PDF preview on resource pages.
+  `frame-src ${TURNSTILE_HOST} ${UPLOAD_HOSTS.join(" ")}`,
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -36,6 +37,9 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   poweredByHeader: false,
+  experimental: {
+    optimizePackageImports: ["lucide-react", "date-fns"],
+  },
   // Native/dynamic-require packages must stay external to the server bundle.
   serverExternalPackages: ["image-video-compressor", "fluent-ffmpeg", "ffmpeg-static", "ffprobe-static"],
   images: {
