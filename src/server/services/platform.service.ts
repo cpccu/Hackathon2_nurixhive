@@ -1,3 +1,4 @@
+import { addDaysToDateKey, dhakaInstant, getDhakaDateKey } from "@/config/campus-calendar";
 import type { Prisma } from "@/generated/prisma/client";
 import type { Role } from "@/generated/prisma/enums";
 import { can, Permission } from "@/lib/auth/rbac";
@@ -30,15 +31,12 @@ export async function logSearchTerm(q: string): Promise<void> {
 
 // ───────────── Event reminders (cron) ─────────────
 
-const DHAKA_OFFSET_MS = 6 * 3600 * 1000;
-const DAY_MS = 24 * 3600 * 1000;
 const REMINDER_BATCH = 1000;
 
 /** UTC range of "tomorrow" in Asia/Dhaka. */
 export function dhakaTomorrow(now: Date): { start: Date; end: Date } {
-  const local = new Date(now.getTime() + DHAKA_OFFSET_MS);
-  const todayMidnight = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - DHAKA_OFFSET_MS;
-  return { start: new Date(todayMidnight + DAY_MS), end: new Date(todayMidnight + 2 * DAY_MS) };
+  const today = getDhakaDateKey(now);
+  return { start: dhakaInstant(addDaysToDateKey(today, 1)), end: dhakaInstant(addDaysToDateKey(today, 2)) };
 }
 
 export interface ReminderReport {
@@ -52,6 +50,10 @@ export interface ReminderReport {
  * published events that start tomorrow (Dhaka). Idempotent: each event is
  * claimed with `reminderSentAt` before sending, so overlapping cron runs and
  * retries never double-send.
+ *
+ * Campus calendar: this cron only sends EVENT reminders, which go out normally even when the
+ * event falls on an off day (the organiser confirmed it). It never sends "class tomorrow" or
+ * "bus tomorrow" reminders, so nothing is announced for Wednesday or Thursday.
  */
 export async function sendEventReminders(now: Date = new Date()): Promise<ReminderReport> {
   const { start, end } = dhakaTomorrow(now);

@@ -22,6 +22,7 @@ export interface ResourceCardData {
   createdAt: string | Date;
   department: { id?: string; code: string; name?: string };
   course: { id?: string; code: string; title: string } | null;
+  courseName?: string | null;
 }
 
 export interface BookmarkRow {

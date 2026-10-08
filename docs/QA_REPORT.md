@@ -10,7 +10,7 @@ Built by the **Nurix Hive** team for City University, Bangladesh. This report co
 | `npx tsc --noEmit` (app) and `tsc -p tsconfig.test.json` (tests, scripts, configs) | clean |
 | `npm run build` | passes (also with devDependencies absent, as on Vercel) |
 | `npm test` (Vitest) | 172 / 172 passed |
-| `npm run test:e2e` (Playwright, Chromium) | see section 3 |
+| `npm run test:e2e` (Playwright, Chromium) | 91 passed, 0 failed, 1 skipped |
 | `npm audit --omit=dev` | 0 vulnerabilities |
 | Secret scan (client bundle, tracked files, git history) | none found |
 
@@ -57,7 +57,7 @@ Public pages checked for horizontal overflow at 360, 390, 768 and 1280 px (produ
 
 Specs: `auth`, `events`, `campus`, `admin`, `edge`, `a11y`. Run against `next dev` on port 3100 with `E2E_MAIL_CAPTURE=1` (test-only mail capture, ignored in production) and Turnstile blanked for the test server only.
 
-Final run: **see the summary line recorded in the hand-off message** (the run finishes after this file was written).
+Final run on a stable tree: **91 passed, 0 failed, 1 skipped** (17.4 min). This includes all 60 axe checks (30 pages x light and dark), the reduced-motion check, the admin role matrix, and the edge-case suite. The skipped test is a data-dependent guard (it skips itself when the seeded data lacks an open event or a second club).
 
 ## 4. Bugs found and fixed in this pass
 

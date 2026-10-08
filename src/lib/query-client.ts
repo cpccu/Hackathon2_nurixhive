@@ -1,4 +1,4 @@
-import { QueryClient } from "@tanstack/react-query";
+import { type QueryClient as QueryClientType, QueryClient } from "@tanstack/react-query";
 import { ApiClientError } from "@/lib/api-client";
 
 /** Never retry client errors (4xx); retry network/5xx up to twice. */
@@ -19,6 +19,11 @@ export function makeQueryClient(): QueryClient {
       mutations: { retry: false },
     },
   });
+}
+
+/** Invalidates every cached Lost & Found list (public board, item pages and the user's own posts). */
+export function invalidateLostFound(client: QueryClientType): Promise<void[]> {
+  return Promise.all([client.invalidateQueries({ queryKey: ["lost-found"] }), client.invalidateQueries({ queryKey: queryKeys.myLostFound })]);
 }
 
 /** Central query keys so invalidations stay consistent. */

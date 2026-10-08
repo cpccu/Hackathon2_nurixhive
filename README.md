@@ -16,16 +16,17 @@ One hub for campus life at City University (Bangladesh). Events and clubs, acade
 6. [Environment variables](#environment-variables)
 7. [Local setup](#local-setup)
 8. [Seed and demo credentials](#seed-and-demo-credentials)
-9. [API reference](#api-reference)
-10. [Caching tag map](#caching-tag-map)
-11. [Security](#security)
-12. [Deployment](#deployment)
-13. [Folder structure](#folder-structure)
-14. [Frontend architecture](#frontend-architecture)
-15. [User portal and public pages](#user-portal-and-public-pages)
-16. [Admin portal](#admin-portal)
-17. [Production hardening](#production-hardening)
-18. [Credits](#credits)
+9. [Campus calendar and bus service rules](#campus-calendar-and-bus-service-rules)
+10. [API reference](#api-reference)
+11. [Caching tag map](#caching-tag-map)
+12. [Security](#security)
+13. [Deployment](#deployment)
+14. [Folder structure](#folder-structure)
+15. [Frontend architecture](#frontend-architecture)
+16. [User portal and public pages](#user-portal-and-public-pages)
+17. [Admin portal](#admin-portal)
+18. [Production hardening](#production-hardening)
+19. [Credits](#credits)
 
 ---
 
@@ -147,11 +148,31 @@ Run `npm run db:seed`. It is idempotent and safe to re-run. It creates:
 - Event dates and the counters (`registrationCount`, sample `downloadCount`) are refreshed on each run.
 - **Helpdesk & campus content** (`prisma/seed-campus.ts`):
   - **82 knowledge-base entries**, all `isSample: true` (*sample data that admins must verify*; the chatbot labels answers drawn from them). Editing an entry clears the flag.
-  - 6 bus routes to the Khagan/Birulia campus with Sat–Thu trips, and their auto-generated KB entries.
+  - 6 bus routes to the Khagan/Birulia campus with Fri–Tue trips (no service Wed/Thu), and their auto-generated KB entries.
   - 8 notices (two EXAM notices, auto-synced into the KB, and two class cancellations).
   - 5 open forms with **placeholder `example.com` URLs**, to be replaced with real Google Form links.
   - 6 lost & found posts by the demo students.
 - Credentials are never committed to the repository.
+
+## Campus calendar and bus service rules
+
+City University is **open Friday to Tuesday** and **closed Wednesday and Thursday**. **No bus runs on Wednesday or Thursday.** The week starts on **Friday** (Friday, Saturday, Sunday, Monday, Tuesday, Wednesday, Thursday).
+
+- **One source of truth:** `src/config/campus-calendar.ts`. Every "today", "tomorrow", "this week" and "next bus" decision calls its helpers. The weekday is always computed in **Asia/Dhaka** (`Intl.DateTimeFormat`), never from the server's UTC day or the browser's local zone.
+- **Special closures:** the `CampusClosure` table (public holidays, exam-day bus changes) overrides the weekly rule for one date. Admins manage it at `/admin/calendar` ("Campus calendar") or through `/api/admin/calendar/closures`. A closure must close the campus, suspend the bus, or both.
+- **Where it applies:**
+
+| Area | Behaviour |
+| --- | --- |
+| Bus data | Seed and admin trips may only use Friday to Tuesday. A Wednesday or Thursday day is rejected with `422 BUS_DAY_NOT_ALLOWED`, and a database CHECK constraint (`BusTrip_no_off_days`) backs it up. |
+| Bus pages, landing widget | On an off day or a suspended day the page shows "No bus service today" with the reason and the next service time. The live countdown only runs on a service day. The route page has a weekday selector (Friday first) that marks Wednesday and Thursday as off days. The day is resolved in the browser from the Dhaka clock and the cached closures, so there is no time-based revalidation. |
+| `GET /api/bus/next`, `GET /api/bus/routes/{code}` | Return `service`, `reason`, `message` and `nextServiceAt`, and the departures start at the next service day. |
+| Chatbot | Answers "is the university open today / tomorrow / on Wednesday?", "when is the next working day?" and "which days does the bus run?" in English, Banglish and Bangla. The bus knowledge-base entries state the working days and the Wednesday/Thursday rule. |
+| Events | Creating or moving an event onto Wednesday or Thursday needs `confirmOffDay: true` (`422 OFF_DAY_CONFIRMATION_REQUIRED` otherwise); the admin form shows a warning and a checkbox. Cards and the calendar mark off days, the calendar starts on Friday, and the "This week" filter is the Dhaka Friday to Thursday week. |
+| Notices | Class-cancellation notices for an off day show a soft warning (not blocking). |
+| Reminders | The event reminder cron computes "tomorrow" from the Dhaka date. |
+
+Changing a closure expires the tags `calendar`, `buses` and `kb`, so the bus pages and chatbot answers update immediately.
 
 ## API reference
 
@@ -691,7 +712,7 @@ The public event feed, sorted by `startAt` (newest first for `when=past`).
 
 - **Auth:** none. **Cached:** tag `events`. The cache key includes an hourly "now" bucket.
 - **Query:**
-  - `when`: `upcoming` (default), `thisWeek` (the Dhaka Sat–Fri week), `past` or `all`.
+  - `when`: `upcoming` (default), `thisWeek` (the Dhaka Friday–Thursday week), `past` or `all`.
   - `clubId?`, `clubSlug?`, `type?` (`WORKSHOP|CONTEST|SEMINAR|CULTURAL|SPORTS|MEETUP|OTHER`).
   - `dateFrom?`, `dateTo?` (ISO with offset; filters `startAt`).
   - `q?` (title or venue contains), `cursor?`, `limit?`.
@@ -841,9 +862,9 @@ Requires `events:manage` (CLUB_ADMIN, ADMIN, SUPER_ADMIN). A CLUB_ADMIN only see
 | Method & path | Body / query | Success |
 | --- | --- | --- |
 | `GET /api/admin/events` | `status?`, `clubId?`, `q?`, `cursor?`, `limit?` | 200: events in any status, newest start first |
-| `POST /api/admin/events` | See the example below | 201: the event (`DRAFT`, or `PUBLISHED` with `"publish": true`) |
+| `POST /api/admin/events` | See the example below. An event that starts on Wednesday or Thursday (Dhaka) also needs `"confirmOffDay": true`, otherwise the API answers `422 OFF_DAY_CONFIRMATION_REQUIRED`. | 201: the event (`DRAFT`, or `PUBLISHED` with `"publish": true`) |
 | `GET /api/admin/events/{id}` | none | 200: the event, including `createdBy` |
-| `PATCH /api/admin/events/{id}` | Any field from the create body (all optional) | 200. If the time or venue of a published event changes, registrants are notified in-app and by bulk email. |
+| `PATCH /api/admin/events/{id}` | Any field from the create body (all optional). Moving an event onto a Wednesday or Thursday needs `confirmOffDay: true` too. | 200. If the time or venue of a published event changes, registrants are notified in-app and by bulk email. |
 | `POST /api/admin/events/{id}/publish` | none | 200: `DRAFT` → `PUBLISHED` |
 | `POST /api/admin/events/{id}/cancel` | `{ "reason": "Lab maintenance - we will reschedule soon." }` | 200: `CANCELLED`. Registrants are notified with the reason. |
 | `DELETE /api/admin/events/{id}` | none | 200 (soft delete). Refused (409) for a published event that has registrations; cancel it first. |
@@ -1042,6 +1063,7 @@ Submits a resource. Upload the PDF first through the FileRouter.
 
 - **Auth:** cookie. **Headers:** `Origin`, `Content-Type: application/json`. **Rate limit:** `upload`.
 - **Body:** `courseId`, `semester`, `year`, `description` and `tags` (at most 10, lower-cased and de-duplicated) are optional.
+- **Custom course:** if the course is not in the catalogue send `courseName` (2–120 characters, free text such as `"CSE 4101 · Machine Learning"`) instead of `courseId`; sending both returns 400. The name is shown on the card and detail page, and is also added as a search tag.
 
   ```json
   {
@@ -1275,18 +1297,18 @@ All active routes with their stops (`[{ name, offsetMinutes }]` in to-campus ord
 - **Success (200):**
 
   ```json
-  { "success": true, "data": [ { "id": "…", "code": "R1", "name": "Dhanmondi", "stops": [ { "name": "Dhanmondi 27", "offsetMinutes": 0 }, { "name": "City University Campus (Khagan, Birulia)", "offsetMinutes": 75 } ], "notes": "…", "trips": [ { "id": "…", "departureTime": "07:00", "direction": "TO_CAMPUS", "daysOfWeek": [0,1,2,3,4,6], "isActive": true } ] } ] }
+  { "success": true, "data": [ { "id": "…", "code": "R1", "name": "Dhanmondi", "stops": [ { "name": "Dhanmondi 27", "offsetMinutes": 0 }, { "name": "City University Campus (Khagan, Birulia)", "offsetMinutes": 75 } ], "notes": "…", "trips": [ { "id": "…", "departureTime": "07:00", "direction": "TO_CAMPUS", "daysOfWeek": [0,1,2,5,6], "isActive": true } ] } ] }
   ```
 
 #### `GET /api/bus/routes/{code}`
 
-One route plus `nextDepartures`, computed live in Asia/Dhaka time.
+One route plus `nextDepartures`, computed live in Asia/Dhaka time and aware of the campus calendar. On an off day (Wednesday, Thursday) or a special closure, `service` is `false`, `reason` is `OFF_DAY` or `CLOSURE`, `message` explains it and `nextServiceAt` is the first departure of the next service day.
 
 - **Auth:** none. **Cached:** tags `buses` and `bus:{id}`.
 - **Success (200):**
 
   ```json
-  { "success": true, "data": { "code": "R1", "name": "Dhanmondi", "stops": [], "trips": [], "nextDepartures": [ { "tripId": "…", "direction": "TO_CAMPUS", "stop": "Dhanmondi 27", "time": "07:00", "at": "2026-10-08T01:00:00.000Z", "dayOffset": 0, "minutesUntil": 411 } ] } }
+  { "success": true, "data": { "code": "R1", "name": "Dhanmondi", "stops": [], "trips": [], "service": true, "reason": null, "message": "Buses are running today.", "nextServiceAt": null, "nextDepartures": [ { "tripId": "…", "direction": "TO_CAMPUS", "stop": "Dhanmondi 27", "time": "07:00", "at": "2026-10-08T01:00:00.000Z", "dayOffset": 0, "minutesUntil": 411 } ] } }
   ```
 
 - **Errors:** 400, 404.
@@ -1295,11 +1317,11 @@ One route plus `nextDepartures`, computed live in Asia/Dhaka time.
 
 Next departures at a stop.
 
-- **Auth:** none. **Behaviour:** `stop` is matched case-insensitively. A `FROM_CAMPUS` trip reaches the stop at departure + (journey − stop offset). Fridays and holidays roll over to the next service day.
+- **Auth:** none. **Behaviour:** `stop` is matched case-insensitively. A `FROM_CAMPUS` trip reaches the stop at departure + (journey − stop offset). Wednesday, Thursday and special closures have no service: the response then has `service: false`, a `reason` (`OFF_DAY` or `CLOSURE`), a `message`, `nextServiceAt`, and `departures` starting at the next service day.
 - **Success (200):**
 
   ```json
-  { "success": true, "data": { "route": { "code": "R2", "name": "Mirpur" }, "stop": "Gabtoli", "now": "…", "departures": [ { "time": "14:05", "direction": "FROM_CAMPUS", "dayOffset": 0, "minutesUntil": 845, "at": "2026-10-08T08:05:00.000Z" } ] } }
+  { "success": true, "data": { "route": { "code": "R2", "name": "Mirpur" }, "stop": "Gabtoli", "now": "…", "service": true, "reason": null, "message": "Buses are running today.", "noMoreToday": false, "nextServiceAt": null, "departures": [ { "time": "14:05", "direction": "FROM_CAMPUS", "dayOffset": 0, "minutesUntil": 845, "at": "2026-10-08T08:05:00.000Z" } ] } }
   ```
 
 - **Errors:** 400 (bad code, or an unknown stop; the message lists the valid stops), 404.
@@ -1314,11 +1336,37 @@ Every mutation is audited, regenerates the route's KB entry, and revalidates `bu
 | `POST /api/admin/bus/routes` | `{ "code": "R7", "name": "Gazipur", "stops": [ { "name": "Gazipur Chowrasta", "offsetMinutes": 0 }, { "name": "Campus", "offsetMinutes": 90 } ], "notes": null, "isActive": true }`. The first offset must be 0 and offsets must strictly increase. | 201 |
 | `PATCH /api/admin/bus/routes/{id}` | Any of `name`, `stops`, `notes`, `isActive` | 200 |
 | `DELETE /api/admin/bus/routes/{id}` | none | 200 (soft delete; its KB entry is removed) |
-| `POST /api/admin/bus/routes/{id}/trips` | `{ "departureTime": "19:00", "direction": "FROM_CAMPUS", "daysOfWeek": [6,0,1,2,3,4] }` (0 = Sunday) | 201 |
+| `POST /api/admin/bus/routes/{id}/trips` | `{ "departureTime": "19:00", "direction": "FROM_CAMPUS", "daysOfWeek": [5,6,0,1,2] }` (0 = Sunday; only Friday to Tuesday, i.e. 5, 6, 0, 1, 2, are allowed) | 201 |
 | `PATCH /api/admin/bus/trips/{id}` | Any trip field | 200 |
 | `DELETE /api/admin/bus/trips/{id}` | none | 200 |
 
-Errors: 400 (bad `HH:mm`, days or stops), 403, 404, 409 (duplicate code).
+Errors: 400 (bad `HH:mm`, days or stops), 403, 404, 409 (duplicate code), 422 `BUS_DAY_NOT_ALLOWED` (a trip on Wednesday or Thursday).
+
+### Campus calendar
+
+#### `GET /api/calendar`
+
+The weekly rule, today's status and the upcoming special closures, all on the Asia/Dhaka calendar.
+
+- **Auth:** none. **Cached:** tag `calendar` (expired when an admin changes a closure).
+- **Success (200):**
+
+  ```json
+  { "success": true, "data": { "timeZone": "Asia/Dhaka", "now": "2026-10-14T04:00:00.000Z", "weeklyRule": { "weekStart": "Friday", "workingDays": ["Friday", "Saturday", "Sunday", "Monday", "Tuesday"], "offDays": ["Wednesday", "Thursday"], "busServiceDays": ["Friday", "Saturday", "Sunday", "Monday", "Tuesday"] }, "today": { "dateKey": "2026-10-14", "weekday": "Wednesday", "campusOpen": false, "busService": false, "campusReason": "OFF_DAY", "busReason": "OFF_DAY" }, "closures": [ { "dateKey": "2026-12-16", "title": "Victory Day", "closesCampus": true, "suspendsBus": true, "note": null } ] } }
+  ```
+
+#### Admin: special closures (`calendar:manage`, held by ADMIN and SUPER_ADMIN)
+
+Every mutation is audited (`calendar.closure_create`, `calendar.closure_update`, `calendar.closure_delete`) and expires the tags `calendar`, `buses` and `kb`.
+
+| Method & path | Body | Success |
+| --- | --- | --- |
+| `GET /api/admin/calendar/closures?includePast=false&cursor=…&limit=…` | none | 200: cursor-paginated closures (`includePast` is `"true"` or `"false"`, default `false`) |
+| `POST /api/admin/calendar/closures` | `{ "date": "2026-12-16", "title": "Victory Day", "closesCampus": true, "suspendsBus": true, "note": null }` (strict; at least one of `closesCampus` / `suspendsBus` must be true) | 201 |
+| `PATCH /api/admin/calendar/closures/{id}` | Any of `date`, `title`, `closesCampus`, `suspendsBus`, `note` | 200 |
+| `DELETE /api/admin/calendar/closures/{id}` | none | 200 |
+
+Errors: 400 (invalid date, empty title, a closure that changes nothing), 401, 403, 404, 409 (a closure already exists for that date).
 
 ### Notices, forms & follows
 
@@ -1771,7 +1819,7 @@ How it works:
 | --- | --- | --- |
 | `events` | Event lists, event pages, club pages' upcoming events | `revalidateEvents()`, `revalidateClubs()` (event create/update/publish/cancel/delete, club changes) |
 | `event:{id}` | One event's page (seat count) | `revalidateEvents(id)`, `revalidateEventDetail(id)` (register, cancel registration, check-in) |
-| `calendar` | `GET /api/events/calendar` | `revalidateEvents()`, `revalidateClubs()` |
+| `calendar` | `GET /api/events/calendar`, `GET /api/calendar` (weekly rule and special closures) | `revalidateEvents()`, `revalidateClubs()`, `revalidateCampusClosures()` (closure create/update/delete) |
 | `clubs` | Club directory and club pages | `revalidateClubs()` |
 | `club:{id}` | One club page | `revalidateClubs(id)` |
 | `forms` | Forms & deadlines listing | `revalidateForms()`, `revalidateClubs()` |
@@ -1782,9 +1830,9 @@ How it works:
 | `notices` | `GET /api/notices`, the chatbot's class-cancellation intent, global search, sitemap | `revalidateNotices()` (notice create/update/delete), `revalidateAcademics()` |
 | `notice:{id}` | `GET /api/notices/{id}` | `revalidateNotices(id)` |
 | `forms` | `GET /api/forms`, the chatbot's open-forms intent | `revalidateForms()` (form create/update/delete), `revalidateClubs()` |
-| `buses` | `GET /api/bus/routes`, `GET /api/bus/routes/{code}`, `/api/bus/next`, chatbot bus intents | `revalidateBuses()` (route or trip create/update/delete) |
+| `buses` | `GET /api/bus/routes`, `GET /api/bus/routes/{code}`, `/api/bus/next`, chatbot bus intents | `revalidateBuses()` (route or trip create/update/delete), `revalidateCampusClosures()` |
 | `bus:{id}` | One route | `revalidateBuses(id)` |
-| `kb` | Helpdesk lists, categories and entries, **cached chatbot retrieval**, global search, sitemap | `revalidateKnowledgeBase()` (entry CRUD, publish, import), `revalidateBuses()` and notice mutations (auto-synced entries) |
+| `kb` | Helpdesk lists, categories and entries, **cached chatbot retrieval**, global search, sitemap | `revalidateKnowledgeBase()` (entry CRUD, publish, import), `revalidateBuses()`, `revalidateCampusClosures()` and notice mutations (auto-synced entries) |
 | `kb:{id}` | `GET /api/helpdesk/entries/{id}` | `revalidateKnowledgeBase(id)` |
 | `lost-found` | `GET /api/lost-found`, item pages, matches, global search | `revalidateLostFound()` (post create/edit/delete, claim decisions, status changes, moderation) |
 | `lf:{id}` | One post and its matches | `revalidateLostFound(id)` |
@@ -1996,6 +2044,7 @@ Everything lives under `/admin` (route group `src/app/admin/(console)`), is `noi
 | Resource approve, reject, edit, delete, bulk | `resources`, `stats`, `resource:{id}`, `course:{id}`, `department:{id}` | `/resources`, detail page, search; a deleted link stops resolving |
 | Department or course change | `departments`, `courses`, `resources`, `notices`, `course:{id}`, `department:{id}` | filters, dropdowns, notices |
 | Notice create, update, delete, pin | `notices`, `kb`, `stats`, `notice:{id}` | `/notices`, landing ticker, global search, **chatbot** (auto-synced entry) |
+| Campus closure create, update, delete | `calendar`, `buses`, `kb` | `/bus`, landing next-bus widget, event calendar, chatbot calendar and bus answers |
 | Bus route or trip change | `buses`, `kb`, `stats`, `bus:{id}` | `/bus`, next-bus API, chatbot bus answers |
 | Knowledge base entry CRUD, import, publish | `kb`, `stats`, `kb:{id}` | `/helpdesk`, chatbot retrieval, search |
 | Lost & found hide, restore, resolve, remove, claim decision | `lost-found`, `stats`, `lf:{id}` | `/lost-found`, detail page, matches |

@@ -15,6 +15,7 @@ import { Field } from "@/components/ui/field";
 import { ImageDropzone, type UploadedImage } from "@/components/ui/file-dropzone";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
+import { invalidateLostFound } from "@/lib/query-client";
 import { LOST_FOUND_CATEGORY, optionsOf } from "@/lib/labels";
 import { toastPromise } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -63,8 +64,7 @@ export function PostItemForm() {
         api.post<{ id: string }>("/api/lost-found", { ...values, occurredAt: toDhakaIso(values.occurredAt), imageUrls: images.map((image) => image.url) }),
         { loading: "Posting…", success: "Posted! We will watch for matches." },
       );
-      await queryClient.invalidateQueries({ queryKey: ["lost-found"] });
-      await queryClient.invalidateQueries({ queryKey: ["me", "lost-found"] });
+      await invalidateLostFound(queryClient);
       router.push(`/lost-found/${created.id}`);
       router.refresh();
     } catch (error) {

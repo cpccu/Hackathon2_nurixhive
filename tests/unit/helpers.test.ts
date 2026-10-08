@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { csvCell, csvRow } from "@/lib/csv";
 import { slugify } from "@/lib/slug";
-import { dhakaMonthRange, dhakaWeekRange } from "@/lib/time";
+import { campusWeekRange } from "@/config/campus-calendar";
+import { dhakaMonthRange } from "@/lib/time";
 import { isTrustedUploadUrl, uploadKeyFromUrl } from "@/lib/upload-url";
 import { canonicalCourseCode } from "@/server/services/academic.service";
 
@@ -56,17 +57,17 @@ describe("course codes", () => {
   });
 });
 
-describe("Dhaka calendar maths (UTC+6, week starts Saturday)", () => {
+describe("Dhaka calendar maths (UTC+6, week starts Friday)", () => {
   it("finds the campus week for a Wednesday afternoon", () => {
-    // Wed 2026-10-07 16:00 Dhaka = 10:00Z → week Sat 2026-10-03 00:00 Dhaka = 2026-10-02T18:00Z
-    const { start, end } = dhakaWeekRange(new Date("2026-10-07T10:00:00Z"));
-    expect(start.toISOString()).toBe("2026-10-02T18:00:00.000Z");
-    expect(end.toISOString()).toBe("2026-10-09T18:00:00.000Z");
+    // Wed 2026-10-07 16:00 Dhaka = 10:00Z → week Fri 2026-10-02 00:00 Dhaka = 2026-10-01T18:00Z
+    const { start, end } = campusWeekRange(new Date("2026-10-07T10:00:00Z"));
+    expect(start.toISOString()).toBe("2026-10-01T18:00:00.000Z");
+    expect(end.toISOString()).toBe("2026-10-08T18:00:00.000Z");
   });
 
-  it("handles late Friday night UTC already being Saturday in Dhaka", () => {
-    // Fri 2026-10-09 19:00Z = Sat 01:00 Dhaka → new week starts at 2026-10-09T18:00Z
-    expect(dhakaWeekRange(new Date("2026-10-09T19:00:00Z")).start.toISOString()).toBe("2026-10-09T18:00:00.000Z");
+  it("handles late Thursday night UTC already being Friday in Dhaka", () => {
+    // Thu 2026-10-08 19:00Z = Fri 01:00 Dhaka → new week starts at 2026-10-08T18:00Z
+    expect(campusWeekRange(new Date("2026-10-08T19:00:00Z")).start.toISOString()).toBe("2026-10-08T18:00:00.000Z");
   });
 
   it("maps a month to Dhaka midnight boundaries", () => {

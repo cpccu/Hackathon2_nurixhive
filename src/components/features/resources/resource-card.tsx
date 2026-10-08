@@ -51,11 +51,11 @@ export function ResourceCard({ resource, query, className }: ResourceCardProps) 
           </span>
         </Link>
       </h3>
-      {resource.course && (
+      {(resource.course || resource.courseName) && (
         <p className="flex items-center gap-1.5 text-sm text-fg-muted">
           <GraduationCap className="size-4 shrink-0 text-fg-subtle" aria-hidden />
           <span className="truncate">
-            <Highlight text={`${resource.course.code} · ${resource.course.title}`} query={query} />
+            <Highlight text={resource.course ? `${resource.course.code} · ${resource.course.title}` : (resource.courseName ?? "")} query={query} />
           </span>
         </p>
       )}

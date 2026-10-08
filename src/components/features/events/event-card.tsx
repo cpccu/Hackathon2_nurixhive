@@ -2,6 +2,7 @@ import { CalendarDays, MapPin, Users } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
+import { isCampusOpen } from "@/config/campus-calendar";
 import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { dateChip, formatTime, formatWeekdayDate } from "@/lib/format";
 import { EVENT_TYPE, labelOf } from "@/lib/labels";
@@ -65,6 +66,8 @@ interface EventCardProps {
 /** Event card: banner, club badge, date chip, venue, seats left. Whole card is one link. */
 export function EventCard({ event, action, priority, className, layout = "grid" }: EventCardProps) {
   const chip = dateChip(event.startAt);
+  // Weekly rule only: cards are cached pages and do not know about special closures.
+  const offDay = !isCampusOpen(new Date(event.startAt));
   const type = labelOf(EVENT_TYPE, event.type);
   const list = layout === "list";
   return (
@@ -109,6 +112,7 @@ export function EventCard({ event, action, priority, className, layout = "grid" 
             <CalendarDays className="size-4 shrink-0 text-fg-subtle" aria-hidden />
             <dd className="truncate">
               {formatWeekdayDate(event.startAt)} · {formatTime(event.startAt)}
+              {offDay && <span className="ml-2 rounded-md bg-surface-2 px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-fg-subtle">Campus off day</span>}
             </dd>
           </div>
           <div className="flex items-center gap-2">

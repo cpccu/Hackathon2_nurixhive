@@ -32,6 +32,7 @@ export const Permission = {
   ChatAnalyticsView: "chat:analytics",
   AcademicsManage: "academics:manage",
   SettingsManage: "settings:manage",
+  CalendarManage: "calendar:manage",
 } as const;
 
 export type Permission = (typeof Permission)[keyof typeof Permission];

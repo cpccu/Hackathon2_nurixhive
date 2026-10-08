@@ -33,6 +33,7 @@ const resourceFields = {
   description: z.string().trim().max(2000).nullable(),
   type: z.enum(ResourceType),
   courseId: idSchema.nullable(),
+  courseName: z.string().trim().min(2, "Enter at least 2 characters.").max(120).nullable(),
   departmentId: idSchema,
   semester: z.number().int().min(1).max(12).nullable(),
   year: z.number().int().min(2000).max(CURRENT_YEAR + 1).nullable(),
@@ -44,6 +45,7 @@ export const createResourceSchema = z
     ...resourceFields,
     description: resourceFields.description.optional(),
     courseId: resourceFields.courseId.optional(),
+    courseName: resourceFields.courseName.optional(),
     semester: resourceFields.semester.optional(),
     year: resourceFields.year.optional(),
     tags: resourceFields.tags.default([]),
@@ -52,7 +54,8 @@ export const createResourceSchema = z
     fileSize: z.number().int().positive().max(16 * 1024 * 1024),
     mimeType: z.literal("application/pdf"),
   })
-  .strict();
+  .strict()
+  .refine((value) => !(value.courseId && value.courseName), { message: "Choose a listed course or type your own, not both.", path: ["courseName"] });
 
 export const updateResourceSchema = z
   .object(resourceFields)

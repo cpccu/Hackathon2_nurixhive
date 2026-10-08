@@ -4,9 +4,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { useClubOptions } from "@/components/admin/admin-hooks";
 import { AdminPage, Panel } from "@/components/admin/kit";
+import { OffDayNotice } from "@/components/admin/off-day-notice";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/choice";
 import { ImageDropzone, type UploadedImage } from "@/components/ui/file-dropzone";
@@ -14,6 +15,8 @@ import { Field } from "@/components/ui/field";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ui/states";
+import { statusOfDate } from "@/config/campus-calendar";
+import { useCampusClosures } from "@/hooks/use-campus-closures";
 import { api, fieldErrors } from "@/lib/api-client";
 import { dhakaLocalToIso, isoToDhakaLocal } from "@/lib/dhaka";
 import { EVENT_TYPE, optionsOf } from "@/lib/labels";
@@ -30,6 +33,7 @@ interface EventValues {
   capacity: string;
   registrationDeadline: string;
   publish: boolean;
+  confirmOffDay: boolean;
 }
 
 interface EventDetail {
@@ -47,7 +51,7 @@ interface EventDetail {
   registrationCount: number;
 }
 
-const EMPTY: EventValues = { title: "", description: "", clubId: "", type: "WORKSHOP", startAt: "", endAt: "", venue: "", capacity: "", registrationDeadline: "", publish: false };
+const EMPTY: EventValues = { title: "", description: "", clubId: "", type: "WORKSHOP", startAt: "", endAt: "", venue: "", capacity: "", registrationDeadline: "", publish: false, confirmOffDay: false };
 
 function EventFormFields({ event }: { event?: EventDetail }) {
   const router = useRouter();
@@ -60,6 +64,7 @@ function EventFormFields({ event }: { event?: EventDetail }) {
     handleSubmit,
     setError,
     setValue,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<EventValues>({
     defaultValues: event
@@ -78,11 +83,20 @@ function EventFormFields({ event }: { event?: EventDetail }) {
       : EMPTY,
   });
 
+  const closures = useCampusClosures();
+  const startAt = useWatch({ control, name: "startAt" });
+  const confirmOffDay = useWatch({ control, name: "confirmOffDay" });
+  const offDay = Boolean(startAt) && !statusOfDate(startAt.slice(0, 10), closures).open;
+
   useEffect(() => {
     if (!editing && clubs.data?.length === 1) setValue("clubId", clubs.data[0].id);
   }, [clubs.data, editing, setValue]);
 
   const onSubmit = handleSubmit(async (values) => {
+    if (offDay && !values.confirmOffDay) {
+      setError("confirmOffDay", { message: "Tick the box to confirm an event on an off day." });
+      return;
+    }
     const payload = {
       title: values.title,
       description: values.description,
@@ -94,6 +108,7 @@ function EventFormFields({ event }: { event?: EventDetail }) {
       bannerUrl: banner,
       capacity: values.capacity ? Number(values.capacity) : null,
       registrationDeadline: values.registrationDeadline ? dhakaLocalToIso(values.registrationDeadline) : null,
+      ...(offDay ? { confirmOffDay: true } : {}),
     };
     try {
       await toastPromise(editing ? api.patch(`/api/admin/events/${event?.id}`, payload) : api.post("/api/admin/events", { ...payload, publish: values.publish }), {
@@ -154,6 +169,7 @@ function EventFormFields({ event }: { event?: EventDetail }) {
             </Field>
           </div>
         </div>
+        {offDay && <OffDayNotice dateKey={startAt.slice(0, 10)} subject="event" confirm={{ checked: confirmOffDay, onChange: (checked) => setValue("confirmOffDay", checked, { shouldValidate: true }), error: errors.confirmOffDay?.message }} />}
       </Panel>
       <div className="space-y-6">
         <Panel title="Banner" description="Compressed automatically before upload.">

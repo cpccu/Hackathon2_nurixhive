@@ -1,3 +1,5 @@
+import { CAMPUS_WEEK_ORDER, WEEKDAY, WEEKDAY_NAMES, type Weekday } from "@/config/campus-calendar";
+
 /**
  * Chatbot vocabulary. Each concept maps English, Banglish (romanised Bangla) and
  * Bangla variants onto canonical English terms - the words the knowledge base is
@@ -10,7 +12,34 @@ export interface SynonymConcept {
   variants: string[];
 }
 
+/** Concept key for a weekday ("weekday_3" is Wednesday); used by intent detection. */
+export const weekdayConcept = (weekday: Weekday): string => `weekday_${weekday}`;
+
+/** Banglish and Bangla names for each weekday; English names come from the calendar config. */
+const WEEKDAY_ALIASES: Record<Weekday, string[]> = {
+  [WEEKDAY.SUNDAY]: ["robibar", "robivar", "রবিবার"],
+  [WEEKDAY.MONDAY]: ["sombar", "shombar", "সোমবার"],
+  [WEEKDAY.TUESDAY]: ["tue", "tues", "mongolbar", "mongalbar", "মঙ্গলবার"],
+  [WEEKDAY.WEDNESDAY]: ["wed", "budhbar", "budhbaar", "বুধবার"],
+  [WEEKDAY.THURSDAY]: ["thu", "thur", "thurs", "brihospotibar", "brihoshpotibar", "brihaspatibar", "বৃহস্পতিবার", "বৃহস্পতিবার"],
+  [WEEKDAY.FRIDAY]: ["fri", "shukrobar", "sukrobar", "shukrabar", "শুক্রবার"],
+  [WEEKDAY.SATURDAY]: ["shonibar", "sanibar", "শনিবার"],
+};
+
+const WEEKDAY_CONCEPTS: Record<string, SynonymConcept> = Object.fromEntries(
+  CAMPUS_WEEK_ORDER.map((weekday) => {
+    const english = WEEKDAY_NAMES[weekday].toLowerCase();
+    return [weekdayConcept(weekday), { terms: [english], variants: [english, ...WEEKDAY_ALIASES[weekday]] }];
+  }),
+);
+
 export const SYNONYMS: Record<string, SynonymConcept> = {
+  ...WEEKDAY_CONCEPTS,
+  university: { terms: ["university"], variants: ["university", "varsity", "versity", "uni", "বিশ্ববিদ্যালয়", "ভার্সিটি"] },
+  holiday: { terms: ["holiday"], variants: ["holiday", "holidays", "off day", "offday", "weekly off", "closed", "weekend", "chuti", "chhuti", "ছুটি", "ছুটির"] },
+  workday: { terms: ["working", "day"], variants: ["working day", "working days", "workday", "workdays", "open day", "class day", "kajer din", "কাজের দিন"] },
+  tomorrow: { terms: ["tomorrow"], variants: ["tomorrow", "tomorow", "tmrw", "kal", "kaal", "kalke", "kaalke", "কাল", "কালকে", "আগামীকাল"] },
+  days: { terms: [], variants: ["days", "which days", "what days", "kon din", "kon kon din", "kon dine", "কোন দিন", "কোন কোন দিন"] },
   bus: { terms: ["bus", "transport"], variants: ["bus", "buses", "shuttle", "transport", "transportation", "gari", "gaari", "garir", "বাস", "গাড়ি", "গাড়ি", "পরিবহন"] },
   exam: { terms: ["exam", "examination"], variants: ["exam", "exams", "examination", "final", "finals", "midterm", "mid", "quiz", "porikkha", "porikha", "pariksha", "poriksha", "পরীক্ষা", "পরীক্ষার"] },
   schedule: { terms: ["schedule", "time", "hours"], variants: ["schedule", "routine", "timetable", "timing", "timings", "time", "hours", "somoy", "shomoy", "koyta", "koytay", "kotokhon", "porjonto", "সময়", "সময়", "সময়সূচি", "রুটিন", "কয়টা", "পর্যন্ত"] },

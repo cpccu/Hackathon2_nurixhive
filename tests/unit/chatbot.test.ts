@@ -87,7 +87,7 @@ describe("detectIntent", () => {
 });
 
 describe("confidence", () => {
-  const entry = { question: "When does the library open?", answer: "The library opens at 8:00 AM, Saturday to Thursday.", keywords: ["library", "hours"] };
+  const entry = { question: "When does the library open?", answer: "The library opens at 8:00 AM, Friday to Tuesday.", keywords: ["library", "hours"] };
 
   it("measures how many meaning units an entry covers", () => {
     expect(coverage(["library"], entry)).toBe(1);

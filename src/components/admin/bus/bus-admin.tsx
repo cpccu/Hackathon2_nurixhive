@@ -1,5 +1,6 @@
 "use client";
 
+import { BUS_SERVICE_DAYS, describeOffDays, describeWorkingDays, weekdayShort } from "@/config/campus-calendar";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Bus, GripVertical, Plus, Save, Trash2 } from "lucide-react";
 import { type DragEvent, useState } from "react";
@@ -51,7 +52,7 @@ interface Departure {
   dayOffset: number;
 }
 
-const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/** Trips can only run on bus service days (Friday to Tuesday); the weekly off days are not offered. */
 const ROUTES_KEY = ["admin", "bus-routes"] as const;
 
 /** Returns a message when offsets are invalid (mirrors the server's rules so errors show before saving). */
@@ -185,15 +186,15 @@ function TripRow({ trip, routeId }: { trip: Trip; routeId: string }) {
         ))}
       </Select>
       <div role="group" aria-label="Days of the week" className="flex gap-1">
-        {DAYS.map((label, day) => (
+        {BUS_SERVICE_DAYS.map((day) => (
           <button
-            key={label}
+            key={day}
             type="button"
             aria-pressed={draft.daysOfWeek.includes(day)}
             onClick={() => toggleDay(day)}
             className={cn("h-9 w-10 rounded-lg border text-xs font-semibold transition", draft.daysOfWeek.includes(day) ? "border-primary bg-primary text-primary-fg" : "border-border bg-surface text-fg-muted hover:border-border-strong")}
           >
-            {label}
+            {weekdayShort(day)}
           </button>
         ))}
       </div>
@@ -217,7 +218,7 @@ function TripsEditor({ route }: { route: Route }) {
   const add = async () => {
     setAdding(true);
     try {
-      await toastPromise(api.post(`/api/admin/bus/routes/${route.id}/trips`, { departureTime: "08:00", direction: "TO_CAMPUS", daysOfWeek: [0, 1, 2, 3, 4], isActive: true }), { loading: "Adding trip…", success: "Trip added at 08:00. Adjust the time and save. Public bus board updated ✓" });
+      await toastPromise(api.post(`/api/admin/bus/routes/${route.id}/trips`, { departureTime: "08:00", direction: "TO_CAMPUS", daysOfWeek: [...BUS_SERVICE_DAYS], isActive: true }), { loading: "Adding trip…", success: "Trip added at 08:00. Adjust the time and save. Public bus board updated ✓" });
       await queryClient.invalidateQueries({ queryKey: ROUTES_KEY });
     } catch {
       // toast shown
@@ -226,7 +227,7 @@ function TripsEditor({ route }: { route: Route }) {
     }
   };
   return (
-    <Panel title="Trips" description="Departure times at the first stop. Days: Sunday to Saturday." actions={<Button size="sm" variant="secondary" onClick={() => void add()} loading={adding}><Plus /> Add trip</Button>}>
+    <Panel title="Trips" description={`Departure times at the first stop. Buses run ${describeWorkingDays()}; there is no service on ${describeOffDays()}.`} actions={<Button size="sm" variant="secondary" onClick={() => void add()} loading={adding}><Plus /> Add trip</Button>}>
       {route.trips.length === 0 ? (
         <EmptyState title="No trips yet" description="Add the first departure." />
       ) : (

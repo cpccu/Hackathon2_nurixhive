@@ -169,7 +169,7 @@ export function buildResourceSearchQuery(params: ResourceSearchParams): Prisma.S
       SELECT r.id, r.title, r.description, r.type::text AS type, r.semester, r.year, r.tags,
              r."fileSize", r."mimeType", r."downloadCount", r."bookmarkCount", r."isSample", r."createdAt",
              d.id AS "departmentId", d.code AS "departmentCode", d.name AS "departmentName",
-             c.id AS "courseId", c.code AS "courseCode", c.title AS "courseTitle",
+             c.id AS "courseId", c.code AS "courseCode", c.title AS "courseTitle", r."courseName",
              ${score} AS score
       FROM "Resource" r
       JOIN "Department" d ON d.id = r."departmentId"
@@ -203,6 +203,7 @@ export interface ResourceSearchRow {
   courseId: string | null;
   courseCode: string | null;
   courseTitle: string | null;
+  courseName: string | null;
   score: number;
 }
 

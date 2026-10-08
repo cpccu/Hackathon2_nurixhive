@@ -1,3 +1,4 @@
+import { describeOffDays, describeWorkingDays } from "@/config/campus-calendar";
 import type { KnowledgeSourceType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { type BusStop, describeDays } from "@/server/domain/bus-schedule";
@@ -65,6 +66,7 @@ export async function syncBusRouteKnowledge(routeId: string): Promise<void> {
     toCampus ? `To campus, it leaves ${stops[0].name} at ${toCampus}.` : null,
     fromCampus ? `From campus, it leaves at ${fromCampus}.` : null,
     `The full journey takes about ${journey} minutes.`,
+    `Buses run ${describeWorkingDays()} only: there is no bus service on ${describeOffDays()} (weekly off days) or on special closure days.`,
     route.notes,
     "Ask \"next bus to <place>\" for the live next departure.",
   ]

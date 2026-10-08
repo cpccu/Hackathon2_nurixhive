@@ -2,6 +2,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { revalidateBuses } from "@/lib/cache-tags";
 import { ConflictError, NotFoundError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
+import { assertBusServiceDays } from "@/server/domain/bus-days";
 import type { AuthUser } from "@/server/middleware/auth";
 import { audit } from "@/server/services/audit.service";
 import { syncBusRouteKnowledge } from "@/server/services/knowledge-sync.service";
@@ -62,6 +63,7 @@ export async function deleteRoute(actor: AuthUser, id: string, request: Request)
 }
 
 export async function createTrip(actor: AuthUser, routeId: string, input: CreateTripInput, request: Request) {
+  assertBusServiceDays(input.daysOfWeek);
   await findRoute(routeId);
   const trip = await prisma.busTrip.create({ data: { ...input, routeId } });
   await audit(actor, "bus.trip_create", { type: "BusTrip", id: trip.id }, { routeId, departureTime: trip.departureTime }, request);
@@ -76,6 +78,7 @@ async function findTrip(id: string) {
 }
 
 export async function updateTrip(actor: AuthUser, id: string, input: UpdateTripInput, request: Request) {
+  assertBusServiceDays(input.daysOfWeek);
   const { routeId } = await findTrip(id);
   const trip = await prisma.busTrip.update({ where: { id }, data: input });
   await audit(actor, "bus.trip_update", { type: "BusTrip", id }, { fields: Object.keys(input) }, request);

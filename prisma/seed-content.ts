@@ -4,6 +4,7 @@
  * Event dates are relative to the day the seed runs so the demo always has
  * upcoming, this-week and past events.
  */
+import { isCampusOpen } from "../src/config/campus-calendar";
 import type { PrismaClient } from "../src/generated/prisma/client";
 import type { EventStatus, EventType, ResourceType } from "../src/generated/prisma/enums";
 
@@ -138,6 +139,13 @@ const EVENTS: SeedEvent[] = [
 const DHAKA_OFFSET_MS = 6 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** Seed events never land on a weekly off day (Wednesday, Thursday): a clash moves to the next open day, same time. */
+function onOpenDay(instant: Date): Date {
+  let time = instant.getTime();
+  while (!isCampusOpen(new Date(time))) time += DAY_MS;
+  return new Date(time);
+}
+
 /** Start of "today" in Dhaka, as a UTC instant. */
 function dhakaToday(): number {
   const local = new Date(Date.now() + DHAKA_OFFSET_MS);
@@ -232,7 +240,7 @@ export async function seedContent(prisma: PrismaClient, logger: Logger): Promise
   for (const event of EVENTS) {
     const clubId = clubs.get(event.club);
     if (!clubId) continue;
-    const startAt = new Date(today + event.day * DAY_MS + event.hour * 3_600_000);
+    const startAt = onOpenDay(new Date(today + event.day * DAY_MS + event.hour * 3_600_000));
     const endAt = new Date(startAt.getTime() + event.hours * 3_600_000);
     const registrationDeadline = event.type === "CONTEST" && event.day > 1 ? new Date(startAt.getTime() - DAY_MS) : null;
     const fields = { title: event.title, description: event.description, clubId, type: event.type, startAt, endAt, venue: event.venue, capacity: event.capacity, registrationDeadline, status: event.status };

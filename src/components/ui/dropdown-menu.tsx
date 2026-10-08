@@ -6,7 +6,8 @@ import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState 
 import { cn } from "@/lib/utils";
 
 export type MenuItem =
-  | { type?: "link"; label: ReactNode; href: string; icon?: ReactNode }
+  /** `external` links (other sites) open in a new tab. */
+  | { type?: "link"; label: ReactNode; href: string; icon?: ReactNode; external?: boolean }
   | { type: "action"; label: ReactNode; onSelect: () => void; icon?: ReactNode; danger?: boolean }
   | { type: "separator" };
 
@@ -93,6 +94,14 @@ export function DropdownMenu({ trigger, items, header, align = "end", className 
                     {item.icon}
                     {item.label}
                   </button>
+                );
+              }
+              if (item.external) {
+                return (
+                  <a key={index} role="menuitem" href={item.href} target="_blank" rel="noopener noreferrer" className={itemClass} onClick={() => setOpen(false)}>
+                    {item.icon}
+                    {item.label}
+                  </a>
                 );
               }
               return (

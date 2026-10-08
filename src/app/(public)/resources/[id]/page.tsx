@@ -43,7 +43,7 @@ async function ResourceDetail({ params }: Props) {
   const type = labelOf(RESOURCE_TYPE, resource.type);
 
   const meta = [
-    { icon: GraduationCap, label: "Course", value: resource.course ? `${resource.course.code} · ${resource.course.title}` : resource.department.name },
+    { icon: GraduationCap, label: "Course", value: resource.course ? `${resource.course.code} · ${resource.course.title}` : (resource.courseName ?? resource.department.name) },
     { icon: CalendarDays, label: "Semester / year", value: [resource.semester ? `Semester ${resource.semester}` : null, resource.year].filter(Boolean).join(" · ") || "Not specified" },
     { icon: FileText, label: "File", value: `PDF · ${formatBytes(resource.fileSize)}` },
     { icon: UserRound, label: "Shared by", value: resource.uploadedBy.name },

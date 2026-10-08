@@ -3,7 +3,8 @@ import type { Prisma } from "@/generated/prisma/client";
 import type { EventType } from "@/generated/prisma/enums";
 import { CacheTags } from "@/lib/cache-tags";
 import { prisma } from "@/lib/prisma";
-import { dhakaMonthRange, dhakaWeekRange } from "@/lib/time";
+import { campusWeekRange } from "@/config/campus-calendar";
+import { dhakaMonthRange } from "@/lib/time";
 import { type Page, toPage } from "@/lib/validation";
 import { spotsLeft } from "@/server/domain/event-registration";
 import type { EVENT_WINDOWS } from "@/server/validators/event.validators";
@@ -64,7 +65,7 @@ function timeWindow(when: PublicEventFilters["when"], now: Date): Prisma.EventWh
     case "past":
       return { endAt: { lt: now } };
     case "thisWeek": {
-      const { start, end } = dhakaWeekRange(now);
+      const { start, end } = campusWeekRange(now);
       return { startAt: { gte: start, lt: end } };
     }
     case "all":

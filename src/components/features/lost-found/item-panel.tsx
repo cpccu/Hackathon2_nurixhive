@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ui/states";
 import { api, ApiClientError, errorMessage } from "@/lib/api-client";
+import { invalidateLostFound } from "@/lib/query-client";
 import { formatRelative } from "@/lib/format";
 import { CLAIM_STATUS, labelOf } from "@/lib/labels";
 import { toast, toastPromise } from "@/lib/toast";
@@ -96,7 +97,7 @@ function ClaimsManager({ itemId, status }: { itemId: string; status: string }) {
   const claims = useQuery({ queryKey: ["lost-found", itemId, "claims"], queryFn: () => api.get<ClaimRow[]>(`/api/lost-found/${itemId}/claims`) });
   const decide = useMutation({
     mutationFn: ({ claimId, decision }: { claimId: string; decision: "APPROVE" | "REJECT" }) => api.patch(`/api/lost-found/${itemId}/claims/${claimId}`, { decision }),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["lost-found"] }),
+    onSettled: () => invalidateLostFound(queryClient),
   });
 
   if (claims.isPending) return <Skeleton className="h-24 rounded-xl" />;
@@ -159,7 +160,7 @@ export function ItemPanel({ itemId }: { itemId: string }) {
     enabled: authStatus !== "loading",
   });
   const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: ["lost-found"] });
+    void invalidateLostFound(queryClient);
     router.refresh();
   };
 
@@ -179,7 +180,7 @@ export function ItemPanel({ itemId }: { itemId: string }) {
     setBusy(true);
     try {
       await toastPromise(api.delete(`/api/lost-found/${itemId}`), { loading: "Deleting…", success: "Post deleted." });
-      await queryClient.invalidateQueries({ queryKey: ["lost-found"] });
+      await invalidateLostFound(queryClient);
       router.replace("/lost-found");
       router.refresh();
     } catch (error) {

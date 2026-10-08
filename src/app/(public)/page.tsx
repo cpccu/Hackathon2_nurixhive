@@ -1,3 +1,4 @@
+import { describeOffDays } from "@/config/campus-calendar";
 import {
   ArrowRight,
   BellRing,
@@ -62,7 +63,7 @@ export default function HomePage() {
           <p className="text-sm font-semibold uppercase tracking-wider text-accent">Never miss the bus</p>
           <h2 id="bus-title" className="mt-2 font-display text-h2 font-bold tracking-tight">Live next-bus finder, in Dhaka time</h2>
           <p className="mt-4 max-w-xl text-lead text-fg-muted">
-            Pick your route and stop and see a live countdown. It handles Friday-off routes, exam-week timings and both directions, and you can also ask the assistant in Banglish: <em>&ldquo;mirpur er porer bus kokhon?&rdquo;</em>
+            Pick your route and stop and see a live countdown. It knows the weekly off days (no bus on {describeOffDays()}), holiday closures and both directions, and you can also ask the assistant in Banglish: <em>&ldquo;mirpur er porer bus kokhon?&rdquo;</em>
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Button asChild variant="accent" size="lg">

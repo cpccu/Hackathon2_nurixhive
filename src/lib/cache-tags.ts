@@ -129,6 +129,12 @@ export const revalidateNotices = (id?: string) =>
 export const revalidateBuses = (id?: string) =>
   revalidateTags(CacheTags.buses, CacheTags.kb, CacheTags.stats, id && CacheTags.busRoute(id));
 
+/**
+ * Campus closure created/updated/deleted: the closure list (`calendar`), bus answers and pages (`buses`)
+ * and the generated knowledge-base entries (`kb`).
+ */
+export const revalidateCampusClosures = () => revalidateTags(CacheTags.calendar, CacheTags.buses, CacheTags.kb);
+
 export const revalidateKnowledgeBase = (id?: string) =>
   revalidateTags(CacheTags.kb, CacheTags.stats, id && CacheTags.kbEntry(id));
 

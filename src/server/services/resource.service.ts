@@ -65,6 +65,13 @@ async function assertAcademicRefs(departmentId: string, courseId: string | null 
   }
 }
 
+/** A custom course is also added as a tag (tags are weighted in search) so the resource stays findable by it. */
+function withCourseTag(tags: string[], courseName: string | null | undefined): string[] {
+  const tag = courseName?.toLowerCase().slice(0, 30).trim();
+  if (!tag || !/^[\p{L}\p{N} +#.-]+$/u.test(tag)) return tags;
+  return [...new Set([...tags, tag])].slice(0, 10);
+}
+
 /**
  * Creates a resource from a PDF the user uploaded via the FileRouter. The key
  * must be tracked in UploadedFile, owned by the user, and its recorded size/type
@@ -87,10 +94,11 @@ export async function createResource(user: AuthUser, input: CreateResourceInput)
       description: input.description ?? null,
       type: input.type,
       courseId: input.courseId ?? null,
+      courseName: input.courseName ?? null,
       departmentId: input.departmentId,
       semester: input.semester ?? null,
       year: input.year ?? null,
-      tags: input.tags,
+      tags: withCourseTag(input.tags, input.courseName),
       fileUrl: upload.url,
       fileKey: upload.key,
       fileSize: upload.size,

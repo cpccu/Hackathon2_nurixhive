@@ -166,6 +166,9 @@ test.describe("Admin portal: content reaches the public site", () => {
   });
 
   test("site banner shows on public pages, maintenance mode blocks visitors but not staff", async ({ browser, staff, playwright }) => {
+    // This flips the REAL maintenance flag, which takes the public site down for everyone on the
+    // same database. Run it only against a throwaway database (E2E_ALLOW_MAINTENANCE_TOGGLE=1).
+    test.skip(process.env.E2E_ALLOW_MAINTENANCE_TOGGLE !== "1", "Toggles the shared maintenance flag; opt in with E2E_ALLOW_MAINTENANCE_TOGGLE=1.");
     const admin = await apiFrom(playwright, staff[1]);
     const message = `E2E banner ${Date.now().toString(36)}`;
     try {

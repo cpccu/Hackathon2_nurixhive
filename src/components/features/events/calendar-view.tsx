@@ -7,6 +7,8 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/states";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CAMPUS_WEEK_ORDER, describeClosedReason, getDhakaParts, statusOfDate, weekdayName, weekdayOfDateKey, weekdayShort } from "@/config/campus-calendar";
+import { useCampusClosures } from "@/hooks/use-campus-closures";
 import { api } from "@/lib/api-client";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -22,20 +24,17 @@ interface CalendarEventRow {
   club: { name: string; slug: string };
 }
 
-const WEEKDAYS = ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"] as const;
-const dhakaParts = (value: Date) => {
-  const [year, month, day] = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dhaka" }).format(value).split("-").map(Number);
-  return { year, month, day };
-};
+const dhakaParts = (value: Date) => getDhakaParts(value);
 const monthKey = (year: number, month: number) => `${year}-${String(month).padStart(2, "0")}`;
 
-/** Month grid (Dhaka calendar, week starts Saturday). Cancelled events are struck through. */
+/** Month grid (Dhaka calendar, week starts Friday; weekly off days and closures are shaded). Cancelled events are struck through. */
 export function CalendarView({ clubSlug, type }: { clubSlug?: string; type?: string }) {
   const [cursor, setCursor] = useState(() => {
     const today = dhakaParts(new Date());
     return { year: today.year, month: today.month };
   });
   const key = monthKey(cursor.year, cursor.month);
+  const closures = useCampusClosures();
 
   const query = useQuery({ queryKey: ["events", "calendar", key], queryFn: () => api.get<{ month: string; events: CalendarEventRow[] }>("/api/events/calendar", { query: { month: key } }) });
 
@@ -51,8 +50,8 @@ export function CalendarView({ clubSlug, type }: { clubSlug?: string; type?: str
   }, [query.data, clubSlug, type]);
 
   const daysInMonth = new Date(Date.UTC(cursor.year, cursor.month, 0)).getUTCDate();
-  // Saturday-first offset: JS getUTCDay() Sat=6 → 0.
-  const offset = (new Date(Date.UTC(cursor.year, cursor.month - 1, 1)).getUTCDay() + 1) % 7;
+  // Friday-first offset: the position of the 1st's weekday in the campus week.
+  const offset = CAMPUS_WEEK_ORDER.indexOf(weekdayOfDateKey(`${key}-01`));
   const today = dhakaParts(new Date());
   const isThisMonth = today.year === cursor.year && today.month === cursor.month;
   const title = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(cursor.year, cursor.month - 1, 1)));
@@ -87,9 +86,9 @@ export function CalendarView({ clubSlug, type }: { clubSlug?: string; type?: str
         <>
           <div className="hidden overflow-hidden rounded-2xl border border-border bg-surface md:block">
             <div className="grid grid-cols-7 border-b border-border bg-surface-2 text-center text-xs font-semibold uppercase tracking-wider text-fg-subtle">
-              {WEEKDAYS.map((day) => (
-                <div key={day} className="py-2.5">
-                  {day}
+              {CAMPUS_WEEK_ORDER.map((weekday) => (
+                <div key={weekday} className="py-2.5">
+                  {weekdayShort(weekday)}
                 </div>
               ))}
             </div>
@@ -101,9 +100,13 @@ export function CalendarView({ clubSlug, type }: { clubSlug?: string; type?: str
                 const day = i + 1;
                 const events = byDay.get(day) ?? [];
                 const isToday = isThisMonth && today.day === day;
+                const status = statusOfDate(`${key}-${String(day).padStart(2, "0")}`, closures);
                 return (
-                  <div key={day} className="min-h-28 border-b border-r border-border/60 p-1.5">
-                    <span className={cn("mb-1 inline-grid size-7 place-items-center rounded-full text-sm font-semibold", isToday ? "bg-primary text-primary-fg" : "text-fg-muted")}>{day}</span>
+                  <div key={day} className={cn("min-h-28 border-b border-r border-border/60 p-1.5", !status.open && "bg-surface-2/70")} title={status.open ? undefined : `Campus closed: ${describeClosedReason(status)}`}>
+                    <div className="mb-1 flex items-center justify-between gap-1">
+                      <span className={cn("inline-grid size-7 place-items-center rounded-full text-sm font-semibold", isToday ? "bg-primary text-primary-fg" : "text-fg-muted")}>{day}</span>
+                      {!status.open && <span className="rounded-md bg-surface px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-fg-subtle">Off</span>}
+                    </div>
                     <ul className="space-y-1">
                       {events.slice(0, 3).map((event) => (
                         <li key={event.id}>
@@ -132,8 +135,11 @@ export function CalendarView({ clubSlug, type }: { clubSlug?: string; type?: str
               .sort(([a], [b]) => a - b)
               .map(([day, events]) => (
                 <li key={day} className="rounded-2xl border border-border bg-surface p-3">
-                  <p className="mb-2 text-sm font-semibold text-fg-muted">
-                    {day} {title}
+                  <p className="mb-2 flex items-center justify-between gap-2 text-sm font-semibold text-fg-muted">
+                    <span>
+                      {weekdayName(weekdayOfDateKey(`${key}-${String(day).padStart(2, "0")}`))}, {day} {title}
+                    </span>
+                    {!statusOfDate(`${key}-${String(day).padStart(2, "0")}`, closures).open && <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-fg-subtle">Campus off day</span>}
                   </p>
                   <ul className="space-y-2">
                     {events.map((event) => (

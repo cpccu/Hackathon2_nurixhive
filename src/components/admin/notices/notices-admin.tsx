@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { useCourseOptions, useDepartmentOptions } from "@/components/admin/admin-hooks";
 import { AdminList, AdminPage, Toolbar } from "@/components/admin/kit";
+import { OffDayNotice } from "@/components/admin/off-day-notice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/choice";
@@ -14,6 +15,7 @@ import type { Column } from "@/components/ui/data-table";
 import { Dialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { Input, Select, Textarea } from "@/components/ui/input";
+import { addDaysToDateKey, getDhakaDateKey } from "@/config/campus-calendar";
 import { useAdminCollection } from "@/hooks/use-admin-collection";
 import { api, fieldErrors } from "@/lib/api-client";
 import { dhakaLocalToIso, isoToDhakaLocal } from "@/lib/dhaka";
@@ -44,8 +46,7 @@ interface NoticeValues {
 
 /** Tomorrow 23:59 (Dhaka) as a datetime-local value: a cancellation notice stays visible through the next day. */
 function tomorrowEnd(): string {
-  const next = new Date(Date.now() + 24 * 3600 * 1000);
-  return `${isoToDhakaLocal(next.toISOString()).slice(0, 10)}T23:59`;
+  return `${addDaysToDateKey(getDhakaDateKey(new Date()), 1)}T23:59`;
 }
 
 const CANCEL_TEMPLATE: NoticeValues = {
@@ -75,6 +76,8 @@ function NoticeDialog({ notice, template, onClose, onSave }: { notice: NoticeRow
   });
   const departmentId = useWatch({ control, name: "departmentId" });
   const category = useWatch({ control, name: "category" });
+  const expiresAt = useWatch({ control, name: "expiresAt" });
+  const [todayKey] = useState(() => getDhakaDateKey(new Date()));
   const courses = useCourseOptions(departmentId || undefined);
   const urgentish = category === "CLASS_CANCELLATION" || category === "URGENT";
 
@@ -154,6 +157,7 @@ function NoticeDialog({ notice, template, onClose, onSave }: { notice: NoticeRow
             </Select>
           </Field>
         </div>
+        {category === "CLASS_CANCELLATION" && <OffDayNotice dateKey={expiresAt ? expiresAt.slice(0, 10) : todayKey} subject="class notice" />}
         <Switch checked={pinned} onCheckedChange={setPinned} label="Pin to the top" description="Pinned notices stay first on the board and the landing ticker." />
       </form>
     </Dialog>

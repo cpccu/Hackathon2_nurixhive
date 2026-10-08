@@ -123,7 +123,7 @@ function EntryDialog({ entry, seed, onClose, onSave }: { entry: EntryRow | null;
 function ImportDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const template = JSON.stringify([{ category: "GENERAL", question: "When does the library open?", answer: "9:00 AM to 8:00 PM, Sunday to Thursday.", keywords: ["library", "hours"], isPublished: true }], null, 2);
+  const template = JSON.stringify([{ category: "GENERAL", question: "When does the library open?", answer: "9:00 AM to 8:00 PM, Friday to Tuesday.", keywords: ["library", "hours"], isPublished: true }], null, 2);
 
   const run = async () => {
     let entries: unknown;

@@ -31,6 +31,8 @@ export interface ResourceCard {
   createdAt: Date;
   department: { id: string; code: string; name: string };
   course: { id: string; code: string; title: string } | null;
+  /** Free-text course when it is not in the catalogue. */
+  courseName: string | null;
   /** Relevance score (only meaningful for `sort=relevance` with a query). */
   score?: number;
 }
@@ -51,6 +53,7 @@ function toCard(row: ResourceSearchRow, includeScore: boolean): ResourceCard {
     createdAt: row.createdAt,
     department: { id: row.departmentId, code: row.departmentCode, name: row.departmentName },
     course: row.courseId && row.courseCode && row.courseTitle ? { id: row.courseId, code: row.courseCode, title: row.courseTitle } : null,
+    courseName: row.courseName,
     ...(includeScore ? { score: row.score } : {}),
   };
 }
@@ -92,6 +95,7 @@ const resourceDetailSelect = {
   updatedAt: true,
   department: { select: { id: true, code: true, name: true } },
   course: { select: { id: true, code: true, title: true, semester: true } },
+  courseName: true,
   uploadedBy: { select: { name: true } },
 } satisfies Prisma.ResourceSelect;
 

@@ -159,7 +159,7 @@ export function EventPanel({ initial }: { initial: EventPanelData }) {
           )}
           items={[
             { type: "action", label: "Download .ics file", onSelect: () => downloadFile(`${event.slug}.ics`, buildIcs(calendarEntry)) },
-            { type: "link", label: "Google Calendar", href: googleCalendarUrl(calendarEntry) },
+            { type: "link", label: "Google Calendar", href: googleCalendarUrl(calendarEntry), external: true },
           ]}
         />
         <ShareButton size="sm" title={event.title} text={`${event.title} at City University`} />

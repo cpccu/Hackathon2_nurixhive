@@ -52,11 +52,13 @@ export const createEventSchema = z
     registrationDeadline: eventFields.registrationDeadline.optional(),
     /** Publish immediately instead of saving as a draft. */
     publish: z.boolean().default(false),
+    /** Required when the start date is a weekly off day or a campus closure (the form asks the organiser to confirm). */
+    confirmOffDay: z.boolean().optional(),
   })
   .strict();
 
 export const updateEventSchema = z
-  .object(eventFields)
+  .object({ ...eventFields, confirmOffDay: z.boolean() })
   .partial()
   .strict()
   .refine((value) => Object.keys(value).length > 0, { message: "Provide at least one field to update." });

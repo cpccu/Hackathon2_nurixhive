@@ -1,12 +1,14 @@
 import { after } from "next/server";
+import { describeClosedReason, getDhakaDateKey, statusOf, weekdayName } from "@/config/campus-calendar";
 import type { Prisma } from "@/generated/prisma/client";
 import { revalidateEvents } from "@/lib/cache-tags";
-import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
+import { AppError, ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
 import { slugify, uniqueSlugVariant } from "@/lib/slug";
 import { type Page, toPage } from "@/lib/validation";
 import { eventCancelledEmail, eventUpdatedEmail } from "@/server/email/templates";
 import type { AuthUser } from "@/server/middleware/auth";
+import { getCampusClosures } from "@/server/queries/calendar.queries";
 import { eventCardSelect } from "@/server/queries/event.queries";
 import { audit } from "@/server/services/audit.service";
 import { assertClubAccess, clubScopeWhere, verifyStaffImage } from "@/server/services/club-access.service";
@@ -111,6 +113,18 @@ export async function getAdminEvent(actor: AuthUser, eventId: string): Promise<A
 }
 
 /** Creates an event as a draft, or published when `publish` is true. */
+/**
+ * An event on a weekly off day (Wednesday, Thursday) or a campus closure needs the organiser's explicit
+ * confirmation (`confirmOffDay: true`); the form shows a warning and a checkbox.
+ */
+async function assertOpenDayOrConfirmed(startAt: Date, confirmOffDay: boolean | undefined): Promise<void> {
+  const status = statusOf(startAt, await getCampusClosures());
+  if (status.open || confirmOffDay) return;
+  throw new AppError(422, "OFF_DAY_CONFIRMATION_REQUIRED", `The campus is closed on ${weekdayName(status.weekday)} (${describeClosedReason(status)}). Confirm that you want to schedule the event on this day.`, {
+    field: "confirmOffDay",
+  });
+}
+
 export async function createEvent(actor: AuthUser, input: CreateEventInput, request: Request): Promise<AdminEvent> {
   await assertClubAccess(actor, input.clubId);
   const club = await prisma.club.findFirst({ where: { id: input.clubId, deletedAt: null, isActive: true }, select: { id: true } });
@@ -120,8 +134,9 @@ export async function createEvent(actor: AuthUser, input: CreateEventInput, requ
   assertValidSchedule(schedule);
   if (input.publish && input.endAt <= new Date()) throw new ValidationError("Cannot publish an event that has already ended.");
   await verifyStaffImage(actor, input.bannerUrl, "bannerUrl");
+  const { publish, confirmOffDay, ...fields } = input;
+  await assertOpenDayOrConfirmed(input.startAt, confirmOffDay);
 
-  const { publish, ...fields } = input;
   const event = await prisma.event.create({
     data: { ...fields, slug: await uniqueEventSlug(input.title), status: publish ? "PUBLISHED" : "DRAFT", createdById: actor.id },
     select: adminEventSelect,
@@ -153,8 +168,10 @@ export async function updateEvent(actor: AuthUser, eventId: string, input: Updat
     throw new ConflictError(`Capacity cannot be lower than the ${current.registrationCount} existing registrations.`);
   }
   await verifyStaffImage(actor, input.bannerUrl, "bannerUrl");
+  const { confirmOffDay, ...changes } = input;
+  if (input.startAt && getDhakaDateKey(input.startAt) !== getDhakaDateKey(current.startAt)) await assertOpenDayOrConfirmed(input.startAt, confirmOffDay);
 
-  const event = await prisma.event.update({ where: { id: eventId }, data: input, select: adminEventSelect });
+  const event = await prisma.event.update({ where: { id: eventId }, data: changes, select: adminEventSelect });
   await audit(actor, "event.update", { type: "Event", id: eventId }, { fields: Object.keys(input) }, request);
 
   const scheduleChanged =

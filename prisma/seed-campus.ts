@@ -6,6 +6,7 @@
  * placeholders that an admin must verify against official City University
  * policy before relying on them. The chatbot labels answers drawn from them.
  */
+import { BUS_SERVICE_DAYS, WORKING_DAYS, describeOffDays, describeWorkingDays, weekdayName } from "../src/config/campus-calendar";
 import type { PrismaClient } from "../src/generated/prisma/client";
 import type { KnowledgeCategory, LostFoundCategory, NoticeCategory } from "../src/generated/prisma/enums";
 
@@ -16,8 +17,9 @@ const KB: Entry[] = [
   // ───── BUS ─────
   ["BUS", "Is the university bus free for students?", "Yes. The university bus service is free for enrolled students who show a valid City University ID card when boarding.", ["bus", "free", "fare", "transport", "shuttle", "gari"]],
   ["BUS", "How do I get a transport pass?", "Collect a transport pass from the Transport Office (Admin Building, ground floor) with your ID card and a passport-size photo. Passes are issued within two working days.", ["bus", "pass", "transport", "card"]],
-  ["BUS", "Where is the Transport Office?", "The Transport Office is on the ground floor of the Admin Building, open Saturday to Thursday, 9:00 AM to 4:00 PM.", ["transport", "office", "bus"]],
-  ["BUS", "Do buses run on Friday?", "No. Regular bus service runs Saturday to Thursday. There is no service on Fridays and on university holidays.", ["bus", "friday", "holiday", "schedule"]],
+  ["BUS", "Where is the Transport Office?", "The Transport Office is on the ground floor of the Admin Building, open {{WORKING}}, 9:00 AM to 4:00 PM.", ["transport", "office", "bus"]],
+  ["BUS", "Do buses run on {{OFF}}?", "No. Buses run {{WORKING}} only. There is no bus service on {{OFF}} (weekly off days) or on university holidays. The next bus after an off day is the first trip on {{FIRST}}.", ["bus", "wednesday", "thursday", "off day", "holiday", "schedule", "chuti", "বুধবার", "বৃহস্পতিবার"]],
+  ["BUS", "Which days does the university bus run?", "The university bus runs {{WORKING}}. It does not run on {{OFF}} (weekly off days) or on special closures announced in notices.", ["bus", "days", "schedule", "friday", "saturday", "sunday", "monday", "tuesday", "kon din"]],
   ["BUS", "What happens if I miss the last bus from campus?", "The last scheduled bus leaves campus at about 5:30 PM. After that, use public transport from Birulia or Ashulia; the university does not run late-night buses except during exam weeks when announced.", ["bus", "last", "late", "campus"]],
   ["BUS", "Can I bring a guest on the university bus?", "No. University buses are for students, faculty and staff with a valid ID card only.", ["bus", "guest", "visitor"]],
   ["BUS", "How do I report a problem with a bus or driver?", "Report it through CampusOS Complaints (category: Transport) with the route code, time and date. Urgent safety issues should also be reported to the Transport Office immediately.", ["bus", "complaint", "driver", "transport"]],
@@ -55,7 +57,7 @@ const KB: Entry[] = [
   ["EXAM", "How early should I reach the exam hall?", "Reach the exam hall at least 15 minutes before the start time. Late entry after 30 minutes is not allowed.", ["exam", "time", "late", "hall"]],
   ["EXAM", "What is the improvement exam?", "An improvement exam lets you retake a course exam to improve a low grade. Apply during the improvement exam registration announced by the Exam Office.", ["improvement", "exam", "retake", "grade"]],
   ["EXAM", "How are class tests counted?", "Class tests (CT) are part of continuous assessment. Usually the best class tests are counted together with attendance and assignments.", ["class", "test", "ct", "assessment", "exam"]],
-  ["EXAM", "Where is the Exam Office?", "The Exam Office (Controller of Examinations) is on the second floor of the Admin Building, open 9:00 AM to 4:00 PM, Saturday to Thursday.", ["exam", "office", "controller"]],
+  ["EXAM", "Where is the Exam Office?", "The Exam Office (Controller of Examinations) is on the second floor of the Admin Building, open 9:00 AM to 4:00 PM, {{WORKING}}.", ["exam", "office", "controller"]],
   ["EXAM", "Can I sit for an exam without paying fees?", "No. You must clear the semester fees to get an admit card and sit for the final exam.", ["exam", "fee", "admit", "payment"]],
   ["EXAM", "What are the rules for exam seating?", "Seat plans are posted outside exam halls and on the Notices page before exams. Sit only in your assigned seat.", ["exam", "seat", "plan", "hall"]],
 
@@ -72,19 +74,19 @@ const KB: Entry[] = [
   ["ADMISSION", "How do I pay the admission fee?", "Pay the admission fee at the designated bank booth or through the online payment options listed on the admission page.", ["admission", "fee", "payment"]],
 
   // ───── GENERAL ─────
-  ["GENERAL", "What are the library opening hours?", "The Central Library is open Saturday to Thursday from 8:00 AM to 8:00 PM. During exam weeks it may stay open until 10:00 PM.", ["library", "hours", "open", "time", "boi"]],
+  ["GENERAL", "What are the library opening hours?", "The Central Library is open {{WORKING}} from 8:00 AM to 8:00 PM. During exam weeks it may stay open until 10:00 PM.", ["library", "hours", "open", "time", "boi"]],
   ["GENERAL", "How many books can I borrow from the library?", "Undergraduate students can borrow up to 3 books for 14 days. Reference books cannot be borrowed.", ["library", "borrow", "book", "boi"]],
   ["GENERAL", "What is the fine for returning library books late?", "The late return fine is 5 taka per book per day. Lost books must be replaced or paid for.", ["library", "fine", "late", "book"]],
   ["GENERAL", "How do I get my student ID card?", "ID cards are issued by the Registrar's Office within the first month after admission. Bring your admission slip and a photo.", ["id", "card", "student", "registrar"]],
   ["GENERAL", "What should I do if I lose my ID card?", "Report it on CampusOS Lost & Found, then apply for a replacement at the Registrar's Office with a replacement fee and a GD copy if required.", ["id", "card", "lost", "replacement"]],
   ["GENERAL", "How do I connect to campus Wi-Fi?", "Connect to the \"CU-Student\" network and sign in with your student ID and portal password. Contact the IT Help Desk if you can't log in.", ["wifi", "internet", "network", "login"]],
-  ["GENERAL", "Where is the IT Help Desk?", "The IT Help Desk is in the Academic Building 1 basement, open 9:00 AM to 5:00 PM, Saturday to Thursday.", ["it", "help", "desk", "support"]],
+  ["GENERAL", "Where is the IT Help Desk?", "The IT Help Desk is in the Academic Building 1 basement, open 9:00 AM to 5:00 PM, {{WORKING}}.", ["it", "help", "desk", "support"]],
   ["GENERAL", "Is there a medical centre on campus?", "Yes. The Medical Centre near the main gate offers first aid and basic consultation, 9:00 AM to 5:00 PM. In emergencies, call the campus emergency number posted at the main gate.", ["medical", "doctor", "health", "centre"]],
   ["GENERAL", "Does City University have a hostel?", "Limited hostel accommodation is available for students near campus. Apply to the Student Affairs Office; seats are allocated on a first-come basis.", ["hostel", "accommodation", "seat", "hall"]],
   ["GENERAL", "What food options are on campus?", "The central cafeteria and several food corners serve meals and snacks from 8:00 AM to 7:00 PM.", ["cafeteria", "food", "canteen", "khabar"]],
   ["GENERAL", "How do I join a club?", "Browse clubs on the CampusOS Clubs page and fill in the club's membership form listed under Forms & Deadlines, or visit the club desk during club week.", ["club", "join", "membership"]],
   ["GENERAL", "How do I register for an event?", "Open the event on CampusOS and tap Register. You'll get a QR ticket by email and in My Registrations; show it at the entrance.", ["event", "register", "qr", "ticket"]],
-  ["GENERAL", "Where is the Registrar's Office?", "The Registrar's Office is on the first floor of the Admin Building, open 9:00 AM to 4:00 PM, Saturday to Thursday.", ["registrar", "office", "admin"]],
+  ["GENERAL", "Where is the Registrar's Office?", "The Registrar's Office is on the first floor of the Admin Building, open 9:00 AM to 4:00 PM, {{WORKING}}.", ["registrar", "office", "admin"]],
   ["GENERAL", "Is there a prayer room on campus?", "Yes. There are separate prayer rooms for male and female students in Academic Building 1 and a central mosque on campus.", ["prayer", "mosque", "room"]],
   ["GENERAL", "Where can I print or photocopy documents?", "The photocopy and print shop beside the library offers printing, photocopying and binding at standard rates.", ["print", "photocopy", "shop"]],
   ["GENERAL", "How do I contact my academic advisor?", "Your advisor's name and office hours are on the student portal. You can also ask your department office.", ["advisor", "academic", "contact"]],
@@ -105,10 +107,16 @@ const KB: Entry[] = [
   ["FAQ", "How do I upload notes to the Resource Hub?", "Open the Resource Hub, choose Upload, attach a PDF and fill in the course details. A moderator reviews it before it goes live.", ["upload", "notes", "resource", "pdf"]],
   ["FAQ", "Who can I contact for CampusOS problems?", "Use the Complaints section with category IT Services, or contact the IT Help Desk.", ["campusos", "help", "support", "it"]],
   ["FAQ", "How do I get notified about notices for my department?", "Follow your department and courses in CampusOS. You'll get in-app notifications when new notices are posted for them.", ["notice", "follow", "department", "notification"]],
+  ["GENERAL", "Which days is the university open?", "City University is open {{WORKING}}. {{OFF}} are the weekly off days, when classes and offices are closed and there is no bus service. Public holidays and special closures are announced as notices.", ["open", "working days", "days", "university", "khola", "friday", "saturday", "sunday", "monday", "tuesday"]],
+  ["GENERAL", "Is the university open on {{OFF}}?", "No. {{OFF}} are the weekly off days (ছুটি), so classes and offices are closed and buses do not run. The campus reopens on {{FIRST}}.", ["wednesday", "thursday", "off day", "holiday", "closed", "chuti", "বুধবার", "বৃহস্পতিবার", "ছুটি", "bondho"]],
+  ["GENERAL", "What are the weekly off days?", "The weekly off days are {{OFF}}. The university is open {{WORKING}}.", ["weekly off", "off day", "holiday", "weekend", "chuti", "ছুটি"]],
   ["FAQ", "When does the semester start?", "City University runs Spring (January), Summer (May) and Fall (September) semesters. Exact start dates are on the academic calendar and Notices page.", ["semester", "start", "calendar", "class"]],
 ];
 
-const DAYS_SAT_THU = [6, 0, 1, 2, 3, 4];
+const WORKING = describeWorkingDays();
+const OFF = describeOffDays();
+const FIRST = weekdayName(WORKING_DAYS[0]);
+const fillDays = (text: string) => text.replaceAll("{{WORKING}}", WORKING).replaceAll("{{OFF}}", OFF).replaceAll("{{FIRST}}", FIRST);
 const CAMPUS = "City University Campus (Khagan, Birulia)";
 
 const ROUTES = [
@@ -124,7 +132,7 @@ const NOTICES: Array<{ title: string; body: string; category: NoticeCategory; de
   { title: "Midterm Exam Schedule - Fall 2026", body: "Midterm exams for all undergraduate programs will be held from 19 to 26 October 2026. Department-wise routines and seat plans are posted outside each department office. Bring your ID card and admit card.", category: "EXAM", pinned: true, daysAgo: 1 },
   { title: "Final Exam Form Fill-up Deadline", body: "Final exam form fill-up for Fall 2026 must be completed on the student portal by 20 November 2026 after clearing semester dues. Late fill-up carries a fine.", category: "EXAM", daysAgo: 3 },
   { title: "CSE-3201 (Operating Systems) class cancelled today", body: "Today's CSE-3201 Section A class is cancelled due to the course teacher's official engagement. A make-up class will be announced later.", category: "CLASS_CANCELLATION", dept: "CSE", course: "CSE-3201", daysAgo: 0 },
-  { title: "BBA-2201 Business Statistics class rescheduled", body: "The BBA-2201 class of Thursday is cancelled and moved to Saturday 10:00 AM, Room 402.", category: "CLASS_CANCELLATION", dept: "BBA", course: "BBA-2201", daysAgo: 2 },
+  { title: "BBA-2201 Business Statistics class rescheduled", body: "The BBA-2201 class of Tuesday is cancelled and moved to Sunday 10:00 AM, Room 402.", category: "CLASS_CANCELLATION", dept: "BBA", course: "BBA-2201", daysAgo: 2 },
   { title: "Campus closed on 16 December (Victory Day)", body: "The university will remain closed on 16 December 2026 on the occasion of Victory Day. Bus service will not run.", category: "GENERAL", pinned: true, daysAgo: 4 },
   { title: "Library hours extended during exams", body: "The Central Library will stay open until 10:00 PM from 15 October to 30 October 2026 for exam preparation.", category: "GENERAL", daysAgo: 5 },
   { title: "Urgent: Power maintenance in Academic Building 2", body: "Due to power maintenance, labs in Academic Building 2 will be unavailable on Sunday from 9:00 AM to 1:00 PM. Affected lab classes are cancelled.", category: "URGENT", daysAgo: 1 },
@@ -157,8 +165,8 @@ export async function seedCampusContent(prisma: PrismaClient, logger: Logger): P
 
   // Knowledge base (sample data, admins must verify).
   for (const [category, question, answer, keywords] of KB) {
-    const existing = await prisma.knowledgeEntry.findFirst({ where: { question, sourceType: "MANUAL" }, select: { id: true } });
-    const data = { category, question, answer, keywords, isPublished: true, isSample: true, deletedAt: null };
+    const existing = await prisma.knowledgeEntry.findFirst({ where: { question: fillDays(question), sourceType: "MANUAL" }, select: { id: true } });
+    const data = { category, question: fillDays(question), answer: fillDays(answer), keywords, isPublished: true, isSample: true, deletedAt: null };
     if (existing) await prisma.knowledgeEntry.update({ where: { id: existing.id }, data });
     else await prisma.knowledgeEntry.create({ data: { ...data, sourceType: "MANUAL", createdById: admin.id } });
   }
@@ -177,13 +185,21 @@ export async function seedCampusContent(prisma: PrismaClient, logger: Logger): P
     await prisma.busTrip.deleteMany({ where: { routeId: saved.id } });
     await prisma.busTrip.createMany({
       data: [
-        ...route.to.map((departureTime) => ({ routeId: saved.id, departureTime, direction: "TO_CAMPUS" as const, daysOfWeek: DAYS_SAT_THU })),
-        ...route.from.map((departureTime) => ({ routeId: saved.id, departureTime, direction: "FROM_CAMPUS" as const, daysOfWeek: DAYS_SAT_THU })),
+        ...route.to.map((departureTime) => ({ routeId: saved.id, departureTime, direction: "TO_CAMPUS" as const, daysOfWeek: [...BUS_SERVICE_DAYS] })),
+        ...route.from.map((departureTime) => ({ routeId: saved.id, departureTime, direction: "FROM_CAMPUS" as const, daysOfWeek: [...BUS_SERVICE_DAYS] })),
       ],
     });
     await syncBusRouteKnowledge(saved.id);
   }
   logger.info("Seeded bus routes", { count: ROUTES.length });
+
+  // A sample special closure (public holiday) so the campus calendar and bus pages have real data.
+  const victoryDay = new Date("2026-12-16T00:00:00Z");
+  await prisma.campusClosure.upsert({
+    where: { date: victoryDay },
+    create: { date: victoryDay, title: "Victory Day", closesCampus: true, suspendsBus: true, note: "Sample data: verify against the official university calendar.", createdById: admin.id },
+    update: {},
+  });
 
   // Notices (EXAM ones are mirrored into the knowledge base).
   const departments = new Map((await prisma.department.findMany({ select: { id: true, code: true } })).map((d) => [d.code, d.id]));

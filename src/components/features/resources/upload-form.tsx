@@ -22,6 +22,7 @@ const schema = z.object({
   type: z.string().min(1, "Choose a type."),
   departmentId: z.string().min(1, "Choose a department."),
   courseId: z.string(),
+  courseName: z.string().max(120, "Keep the course name under 120 characters."),
   semester: z.string(),
   year: z.string().refine((value) => value === "" || /^\d{4}$/.test(value), "Enter a 4-digit year."),
   description: z.string().max(1000, "Keep the description under 1000 characters."),
@@ -43,7 +44,7 @@ interface Course {
   semester: number;
 }
 
-const DEFAULTS: Values = { title: "", type: "NOTES", departmentId: "", courseId: "", semester: "", year: "", description: "", tags: "" };
+const DEFAULTS: Values = { title: "", type: "NOTES", departmentId: "", courseId: "", courseName: "", semester: "", year: "", description: "", tags: "" };
 
 /** Upload a PDF (direct to UploadThing) then submit its metadata for moderation. */
 export function UploadForm() {
@@ -62,6 +63,7 @@ export function UploadForm() {
     formState: { errors, isSubmitting },
   } = useForm<Values>({ resolver: zodResolver(schema), defaultValues: DEFAULTS });
   const departmentId = useWatch({ control, name: "departmentId" });
+  const [customCourse, setCustomCourse] = useState(false);
 
   const departments = useQuery({ queryKey: ["departments"], queryFn: () => api.get<Department[]>("/api/departments"), staleTime: 3_600_000 });
   const courses = useQuery({
@@ -91,7 +93,8 @@ export function UploadForm() {
       fileKey: file.key,
       fileSize: file.size,
       mimeType: "application/pdf",
-      ...(values.courseId ? { courseId: values.courseId } : {}),
+      ...(!customCourse && values.courseId ? { courseId: values.courseId } : {}),
+      ...(customCourse && values.courseName.trim() ? { courseName: values.courseName.trim() } : {}),
       ...(values.semester ? { semester: Number(values.semester) } : {}),
       ...(values.year ? { year: Number(values.year) } : {}),
       ...(values.description.trim() ? { description: values.description.trim() } : {}),
@@ -164,6 +167,11 @@ export function UploadForm() {
             </Select>
           </Field>
         </div>
+        {customCourse ? (
+          <Field label="Course name" error={errors.courseName?.message} hint="Optional - type it the way students know it, e.g. CSE 4101 · Machine Learning.">
+            <Input placeholder="Course code and title" maxLength={120} {...register("courseName")} />
+          </Field>
+        ) : (
         <Field label="Course" error={errors.courseId?.message} hint={departmentId ? "Optional - helps others find it by course code." : "Choose a department first."}>
           <Controller
             control={control}
@@ -179,6 +187,18 @@ export function UploadForm() {
             )}
           />
         </Field>
+        )}
+        <button
+          type="button"
+          className="-mt-2 self-start text-sm font-semibold text-primary hover:underline"
+          onClick={() => {
+            setCustomCourse((value) => !value);
+            setValue("courseId", "");
+            setValue("courseName", "");
+          }}
+        >
+          {customCourse ? "Pick from the course list instead" : "My course is not listed"}
+        </button>
         <div className="grid gap-5 sm:grid-cols-2">
           <Field label="Semester" error={errors.semester?.message}>
             <Select {...register("semester")}>

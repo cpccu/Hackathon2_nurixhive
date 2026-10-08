@@ -2,6 +2,7 @@ import { AlertTriangle, ArrowRight, Bus, CalendarDays, FileText, HelpCircle, Meg
 import Link from "next/link";
 import { connection } from "next/server";
 import { DepartureCountdown } from "@/components/features/bus/departure-countdown";
+import { NoServiceCard } from "@/components/features/bus/service-status";
 import { EventCard } from "@/components/features/events/event-card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,7 +11,8 @@ import { formatClock, formatRelative } from "@/lib/format";
 import { labelOf, NOTICE_CATEGORY } from "@/lib/labels";
 import { hourBucket } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import { nextDepartures } from "@/server/domain/bus-schedule";
+import { busServiceStatus, describeDay, nextDepartures } from "@/server/domain/bus-schedule";
+import { getCampusClosures } from "@/server/queries/calendar.queries";
 import { getBusRoutes, getNotices } from "@/server/queries/campus.queries";
 import { getPublicEvents } from "@/server/queries/event.queries";
 import { getPublicStats } from "@/server/queries/platform.queries";
@@ -99,9 +101,10 @@ export function CardRowSkeleton({ count = 3 }: { count?: number }) {
 export async function NextBusWidget() {
   await connection();
   const now = new Date();
-  const routes = await getBusRoutes();
+  const [routes, closures] = await Promise.all([getBusRoutes(), getCampusClosures(now)]);
+  const status = routes[0] ? busServiceStatus(routes[0].trips, routes[0].stops, now, { closures }) : null;
   const rows = routes
-    .map((route) => ({ route, next: nextDepartures(route.trips, route.stops, now, { direction: "TO_CAMPUS", limit: 1 })[0] }))
+    .map((route) => ({ route, next: nextDepartures(route.trips, route.stops, now, { direction: "TO_CAMPUS", limit: 1, closures })[0] }))
     .filter((row): row is typeof row & { next: NonNullable<typeof row.next> } => Boolean(row.next))
     .sort((a, b) => a.next.at.getTime() - b.next.at.getTime())
     .slice(0, 4);
@@ -123,8 +126,9 @@ export async function NextBusWidget() {
           Dhaka time
         </span>
       </div>
+      {status && !status.service && <NoServiceCard compact message={status.message} className="mb-3" />}
       {rows.length === 0 ? (
-        <p className="py-6 text-sm text-fg-muted">No upcoming trips in the next 7 days.</p>
+        <p className="py-6 text-sm text-fg-muted">No upcoming trips in the next 14 days.</p>
       ) : (
         <ul className="space-y-2">
           {rows.map(({ route, next }) => (
@@ -135,10 +139,14 @@ export async function NextBusWidget() {
                   <span className="block truncate text-sm font-semibold">{route.name}</span>
                   <span className="block truncate text-xs text-fg-subtle">
                     {next.stop} · {formatClock(next.time)}
-                    {next.dayOffset === 1 ? " tomorrow" : next.dayOffset > 1 ? ` in ${next.dayOffset} days` : ""}
+                    {next.dayOffset > 0 ? ` ${describeDay(next.dayOffset, next.at)}` : ""}
                   </span>
                 </span>
-                <DepartureCountdown at={next.at.toISOString()} fallback={formatClock(next.time)} className="shrink-0 rounded-lg bg-accent-soft px-2.5 py-1 text-xs font-bold text-accent-soft-fg" />
+                {status?.service && next.dayOffset === 0 ? (
+                  <DepartureCountdown at={next.at.toISOString()} fallback={formatClock(next.time)} className="shrink-0 rounded-lg bg-accent-soft px-2.5 py-1 text-xs font-bold text-accent-soft-fg" />
+                ) : (
+                  <span className="shrink-0 rounded-lg bg-surface-2 px-2.5 py-1 text-xs font-bold text-fg-muted">{formatClock(next.time)}</span>
+                )}
               </Link>
             </li>
           ))}
