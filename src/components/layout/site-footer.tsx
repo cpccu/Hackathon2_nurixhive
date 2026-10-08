@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PUBLIC_NAV, SECONDARY_NAV } from "@/components/layout/nav-config";
+import { InstallAppButton } from "@/components/layout/install-app-button";
 import { Logo } from "@/components/shared/logo";
 
 const ACCOUNT_LINKS = [
@@ -28,6 +29,10 @@ export function SiteFooter() {
         <FooterColumn title="Services" links={SECONDARY_NAV} />
         <FooterColumn title="Account" links={ACCOUNT_LINKS} />
         <FooterColumn title="About" links={ABOUT_LINKS} />
+      </div>
+      <div className="container-app flex flex-col items-center gap-2 pb-12 text-center">
+        <InstallAppButton />
+        <p className="text-xs text-fg-subtle">Works like a native app: add it to your home screen.</p>
       </div>
       <div className="border-t border-border">
         <div className="container-app flex flex-col gap-2 py-5 text-xs text-fg-subtle sm:flex-row sm:items-center sm:justify-between">

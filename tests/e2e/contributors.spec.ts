@@ -34,4 +34,17 @@ test.describe("Contributors page and landing", () => {
     await expect(page.locator("[aria-current='date']")).toHaveCount(1);
     await expect(page.getByRole("link", { name: "Meet the team" })).toBeVisible();
   });
+
+  test("footer has a centred install button that explains how to install when the browser gives no prompt", async ({ page }) => {
+    await page.goto("/");
+    await settle(page);
+    const button = page.getByRole("contentinfo").getByRole("button", { name: "Install CampusOS app" });
+    await expect(button).toBeVisible();
+    const [box, viewport] = [await button.boundingBox(), page.viewportSize()];
+    expect(Math.abs((box?.x ?? 0) + (box?.width ?? 0) / 2 - (viewport?.width ?? 0) / 2)).toBeLessThan(12);
+    await button.click();
+    await expect(page.getByRole("dialog", { name: "Install CampusOS" })).toBeVisible();
+    await page.getByRole("button", { name: "Got it" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
 });
