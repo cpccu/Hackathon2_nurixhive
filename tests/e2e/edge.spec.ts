@@ -142,6 +142,6 @@ test.describe("Edge cases", () => {
     // not-found UI and the noindex robots tag are what users and crawlers get (documented limit).
     await page.goto("/resources/ckxxxxxxxxxxxxxxxxxxxxxxx");
     await expect(page.getByRole("heading", { level: 1 })).toContainText(/different bus|not found/i, { timeout: 30_000 });
-    await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
+    await expect(page.locator('meta[name="robots"]').first()).toHaveAttribute("content", /noindex/);
   });
 });

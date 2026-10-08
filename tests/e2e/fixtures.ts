@@ -95,7 +95,7 @@ async function staffLogin(playwright: PlaywrightWorkerArgs["playwright"], slot: 
   if (!email || !password) throw new Error(`ADMIN${slot}_EMAIL/PASSWORD are not set in .env.`);
   const request = await playwright.request.newContext({ baseURL: BASE_URL });
   const response = await request.post("/api/auth/admin/login", { headers: ORIGIN_HEADER, data: { email, password, website: "" } });
-  expect(response.ok(), `staff ${slot} login`).toBeTruthy();
+  expect(response.ok(), `staff ${slot} login: ${response.status()} ${(await response.text()).slice(0, 160)}`).toBeTruthy();
   const state = await request.storageState();
   await request.dispose();
   return state;

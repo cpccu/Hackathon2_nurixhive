@@ -1,4 +1,5 @@
-import { BellRing, Bus, CalendarCheck2, FileText, ShieldCheck } from "lucide-react";
+import { ArrowLeft, BellRing, Bus, CalendarCheck2, FileText, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { Logo } from "@/components/shared/logo";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
@@ -41,7 +42,12 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         <div className="bg-mesh absolute inset-0 -z-10 opacity-60 lg:hidden" aria-hidden />
         <header className="flex items-center justify-between p-4 sm:p-6">
           <Logo className="lg:invisible" />
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <Link href="/" className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 text-sm font-semibold text-fg transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+              <ArrowLeft className="size-4" aria-hidden /> Back to home
+            </Link>
+            <ThemeToggle />
+          </div>
         </header>
         <main id="main" tabIndex={-1} className="flex flex-1 items-start justify-center px-4 pb-16 pt-4 outline-none sm:px-6 sm:pt-[min(8vh,5rem)]">
           <div className="w-full max-w-md 3xl:max-w-lg">{children}</div>

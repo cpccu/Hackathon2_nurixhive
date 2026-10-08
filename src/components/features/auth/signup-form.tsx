@@ -8,7 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import toast from "react-hot-toast";
 import { z } from "zod";
-import { applyServerErrors, Honeypot, safeNext, useFormToken } from "@/components/features/auth/auth-form-kit";
+import { applyServerErrors, Honeypot, safeNext, useFormToken, useTurnstile } from "@/components/features/auth/auth-form-kit";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input, Select } from "@/components/ui/input";
@@ -51,6 +51,7 @@ export function SignupForm() {
   const params = useSearchParams();
   const next = safeNext(params.get("next"));
   const getFormToken = useFormToken();
+  const { widget: turnstile, getToken: getTurnstileToken } = useTurnstile();
   const departments = useQuery({ queryKey: ["departments"], queryFn: () => api.get<Department[]>("/api/departments"), staleTime: 3_600_000 });
 
   const {
@@ -65,8 +66,8 @@ export function SignupForm() {
 
   const onSubmit = async ({ studentId, department, batch, ...values }: Values) => {
     const toastId = toast.loading("Creating your account…");
-    const formToken = await getFormToken();
-    const body = { ...values, formToken, ...(studentId ? { studentId } : {}), ...(department ? { department } : {}), ...(batch ? { batch } : {}) };
+    const [formToken, turnstileToken] = await Promise.all([getFormToken(), getTurnstileToken()]);
+    const body = { ...values, formToken, ...(turnstileToken ? { turnstileToken } : {}), ...(studentId ? { studentId } : {}), ...(department ? { department } : {}), ...(batch ? { batch } : {}) };
     const verifyUrl = (email: string) => `/verify-email?email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`;
     try {
       const data = await api.post<SignupResponse>("/api/auth/signup", body, { notifyUnauthorized: false });
@@ -113,6 +114,7 @@ export function SignupForm() {
       <Field label="Password" error={errors.password?.message} required>
         <PasswordInput autoComplete="new-password" placeholder="Create a strong password" showStrength value={password} {...register("password")} />
       </Field>
+      {turnstile}
       <Button type="submit" size="lg" variant="gradient" className="w-full" loading={isSubmitting}>
         Create account
       </Button>

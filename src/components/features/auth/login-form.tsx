@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { z } from "zod";
-import { applyServerErrors, Honeypot, safeNext } from "@/components/features/auth/auth-form-kit";
+import { applyServerErrors, Honeypot, safeNext, useTurnstile } from "@/components/features/auth/auth-form-kit";
 import { type CurrentUser, useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -34,6 +34,7 @@ export function LoginForm({ variant = "student" }: LoginFormProps) {
   const params = useSearchParams();
   const { setUser } = useAuth();
   const staff = variant === "staff";
+  const { widget: turnstile, getToken: getTurnstileToken } = useTurnstile();
   const next = safeNext(params.get("next"), staff ? "/admin/dashboard" : "/dashboard");
 
   const {
@@ -47,7 +48,8 @@ export function LoginForm({ variant = "student" }: LoginFormProps) {
   const onSubmit = async (values: Values) => {
     const toastId = toast.loading(staff ? "Verifying staff access…" : "Signing you in…");
     try {
-      const data = await api.post<{ user: CurrentUser }>(staff ? "/api/auth/admin/login" : "/api/auth/login", values, { notifyUnauthorized: false });
+      const turnstileToken = await getTurnstileToken();
+      const data = await api.post<{ user: CurrentUser }>(staff ? "/api/auth/admin/login" : "/api/auth/login", { ...values, ...(turnstileToken ? { turnstileToken } : {}) }, { notifyUnauthorized: false });
       setUser(data.user);
       toast.success(`Welcome back, ${data.user.name.split(" ")[0]}!`, { id: toastId });
       router.replace(next);
@@ -84,6 +86,7 @@ export function LoginForm({ variant = "student" }: LoginFormProps) {
           </div>
         )}
       </div>
+      {turnstile}
       <Button type="submit" size="lg" className="w-full" loading={isSubmitting} variant={staff ? "primary" : "gradient"}>
         {!isSubmitting && <LogIn />} {staff ? "Sign in to console" : "Sign in"}
       </Button>

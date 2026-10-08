@@ -32,6 +32,7 @@ export default defineConfig({
     url: `http://localhost:${PORT}/api/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
-    env: { E2E_MAIL_CAPTURE: "1" },
+    // Turnstile is blanked for the test server only, so a real key in .env never blocks automated logins.
+    env: { E2E_MAIL_CAPTURE: "1", TURNSTILE_SECRET_KEY: "", NEXT_PUBLIC_TURNSTILE_SITE_KEY: "" },
   },
 });

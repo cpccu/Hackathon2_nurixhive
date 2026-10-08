@@ -128,6 +128,7 @@ export function ImageDropzone({ purpose, value, onChange, max = 4, label = "Uplo
             id={inputId}
             ref={inputRef}
             type="file"
+            aria-label={label}
             accept={IMAGE_TYPES.join(",")}
             multiple={max > 1}
             className="sr-only"
@@ -235,7 +236,7 @@ export function PdfDropzone({ value, onChange, className }: { value: UploadedPdf
           <UploadCloud /> Choose PDF
         </Button>
       )}
-      <input ref={inputRef} type="file" accept="application/pdf" className="sr-only" onChange={(event) => void handle(event.target.files?.[0])} />
+      <input ref={inputRef} type="file" accept="application/pdf" aria-label="Choose a PDF file" className="sr-only" onChange={(event) => void handle(event.target.files?.[0])} />
     </div>
   );
 }

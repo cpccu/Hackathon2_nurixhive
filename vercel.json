@@ -5,7 +5,7 @@
     "iad1"
   ],
   "installCommand": "npm ci",
-  "buildCommand": "node scripts/migrate-deploy.mjs && npm run build",
+  "buildCommand": "npm run build",
   "crons": [
     {
       "path": "/api/cron/reminders",

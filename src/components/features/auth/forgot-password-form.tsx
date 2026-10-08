@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { z } from "zod";
-import { applyServerErrors, Honeypot, useFormToken } from "@/components/features/auth/auth-form-kit";
+import { applyServerErrors, Honeypot, useFormToken, useTurnstile } from "@/components/features/auth/auth-form-kit";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,7 @@ type Values = z.infer<typeof schema>;
 export function ForgotPasswordForm() {
   const router = useRouter();
   const getFormToken = useFormToken();
+  const { widget: turnstile, getToken: getTurnstileToken } = useTurnstile();
   const {
     register,
     handleSubmit,
@@ -33,8 +34,8 @@ export function ForgotPasswordForm() {
   const onSubmit = async (values: Values) => {
     const toastId = toast.loading("Sending reset code…");
     try {
-      const formToken = await getFormToken();
-      await api.post("/api/auth/forgot-password", { ...values, formToken }, { notifyUnauthorized: false });
+      const [formToken, turnstileToken] = await Promise.all([getFormToken(), getTurnstileToken()]);
+      await api.post("/api/auth/forgot-password", { ...values, formToken, ...(turnstileToken ? { turnstileToken } : {}) }, { notifyUnauthorized: false });
       toast.success("If that email has an account, a reset code is on its way.", { id: toastId });
       router.push(`/reset-password?email=${encodeURIComponent(values.email.trim().toLowerCase())}`);
     } catch (error) {
@@ -49,6 +50,7 @@ export function ForgotPasswordForm() {
       <Field label="Email" error={errors.email?.message} required>
         <Input type="email" autoComplete="email" inputMode="email" placeholder="you@example.com" leading={<Mail />} {...register("email")} />
       </Field>
+      {turnstile}
       <Button type="submit" size="lg" variant="gradient" className="w-full" loading={isSubmitting}>
         Send reset code
       </Button>

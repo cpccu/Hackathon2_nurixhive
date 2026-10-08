@@ -90,7 +90,7 @@ Copy `.env.example` to `.env` and fill it in. `src/lib/env.ts` validates every v
 | `REVALIDATE_SECRET` | yes | ≥ 16 characters, guards the manual revalidation endpoint |
 | `CRON_SECRET` | yes | ≥ 16 characters, guards cron endpoints |
 | `LLM_API_KEY` | no | Anthropic API key. Turns on an optional rephrasing layer (Claude, 3 s budget) over knowledge-base answers. The chatbot is fully functional without it. |
-| `TURNSTILE_SECRET_KEY` / `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | no | Cloudflare Turnstile bot protection |
+| `TURNSTILE_SECRET_KEY` / `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | no | Cloudflare Turnstile bot protection. Set **both or neither**: the login, signup and forgot-password forms render the widget when the site key is set, and the API requires a valid token when the secret is set. In Vercel enter the values **without quotes**, and redeploy after changing `NEXT_PUBLIC_*` (it is inlined at build time). Cloudflare's dummy pair for testing is `1x00000000000000000000AA` / `1x0000000000000000000000000000000AA`. |
 | `ADMIN1..4_EMAIL` / `ADMIN1..4_PASSWORD` | seed only | Admin accounts created by the seed |
 | `DEMO_USER_EMAIL` / `DEMO_USER_PASSWORD` | seed only | Demo student account created by the seed |
 
@@ -2062,7 +2062,7 @@ Production build (`next start`), Chromium on the same machine as the server, war
 
 1. **Region:** deploy functions to `iad1` (US East, set in `vercel.json`) and create the Neon project in **us-east-1 or us-east-2**; keep them in the same region to avoid cross-region round trips (the project database is in us-east-2).
 2. **Environment variables:** add every variable from the table above to the Vercel project (Production and Preview). `DATABASE_URL` must be the pooled URL (`-pooler`), `DIRECT_URL` the non-pooled one. Never set `E2E_MAIL_CAPTURE` in Vercel (it is ignored in production anyway).
-3. **Build:** `vercel.json` runs `node scripts/migrate-deploy.mjs && npm run build`. `postinstall` and `build` both run `prisma generate`. `prisma migrate deploy` retries while Neon wakes up.
+3. **Build:** `vercel.json` runs only `npm run build` (`prisma generate && next build`). **Migrations are never applied automatically**: a deploy or preview build cannot touch the database. Apply them yourself, once per schema change, with `npm run db:deploy` (`prisma migrate deploy` with retries while Neon wakes up) using the direct `DIRECT_URL`.
 4. **Cron:** `/api/cron/reminders` (12:00 UTC) and `/api/cron/maintenance` (21:30 UTC) run with `Authorization: Bearer $CRON_SECRET`, which Vercel sends automatically when `CRON_SECRET` is set.
 5. **Production seed:** run once from a trusted machine with the production `DATABASE_URL`: `npm run db:seed` (creates the four staff accounts from `ADMIN1..4_*` and the demo content). Remove demo content and rotate the seed passwords afterwards; sample knowledge entries are flagged `isSample`.
 6. **Health check:** `GET /api/health` returns `200` with database latency, `503` if the database is unreachable. Point the uptime monitor at it. It also warms a suspended Neon compute; on a paid plan add a 5-minute monitor.
