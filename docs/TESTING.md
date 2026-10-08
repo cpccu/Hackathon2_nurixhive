@@ -28,6 +28,7 @@ This guide covers automated checks (lint, types, unit tests, Playwright e2e) and
 | --- | --- |
 | `contributors.spec.ts` | Footer link opens `/contributors`, both people show with loaded portraits, batch, a `mailto:` link and a `wa.me` WhatsApp link; the landing page fills in stats, next-bus panel, campus-week strip (7 days, today marked) and the team band |
 | `campus-calendar.spec.ts` | Wednesday/Thursday off-day UI with a mocked Dhaka clock, weekday selector, `/api/bus/next` shape, `BUS_DAY_NOT_ALLOWED`, closure CRUD, `confirmOffDay` for events |
+| `portal-fixes.spec.ts` | Admin sign-in "Back to home page" link; staff get the admin dashboard from the account menu and the footer; a notification title is not a link and clicking it does not navigate; admin resource preview button only for a PDF or an image (mocked list) |
 | `regressions.spec.ts` | The four pre-submission bugs: login lands on the dashboard (no maintenance page), Google Calendar opens in a new tab, custom course on upload, lost & found status refreshes without a reload |
 | `auth.spec.ts` | Sign up through the form, enter the OTP, land on the dashboard, sign in again; wrong password inline error; guest redirect with `?next=` |
 | `events.spec.ts` | Open an event, register, see the QR ticket dialog, find it under *My tickets*, cancel; calendar view toggle |

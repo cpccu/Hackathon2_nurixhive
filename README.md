@@ -180,7 +180,7 @@ Run `npm run db:seed`. It is idempotent and safe to re-run. It creates:
 - **Sample files are clearly flagged.** Every seed resource has `isSample: true` and a `sample-resource-NNN` key, and points at one real generated PDF (`campusos-sample-resource.pdf`). The seed uploads that PDF to UploadThing once and tracks it in `UploadedFile`. If the upload fails, a flagged placeholder URL is used instead.
 - Event dates and the counters (`registrationCount`, sample `downloadCount`) are refreshed on each run.
 - **Helpdesk & campus content** (`prisma/seed-campus.ts`):
-  - **82 knowledge-base entries**, all `isSample: true` (*sample data that admins must verify*; the chatbot labels answers drawn from them). Editing an entry clears the flag.
+  - **95 sample FAQ entries (plus entries generated from bus routes and notices)**, all `isSample: true` (*sample data that admins must verify*; the chatbot labels answers drawn from them). Editing an entry clears the flag.
   - 6 bus routes to the Khagan/Birulia campus with Fri–Tue trips (no service Wed/Thu), and their auto-generated KB entries.
   - 8 notices (two EXAM notices, auto-synced into the KB, and two class cancellations).
   - 5 open forms with **placeholder `example.com` URLs**, to be replaced with real Google Form links.
@@ -1155,7 +1155,7 @@ Every mutation is audited. Approve, update and delete revalidate `resources`, `r
 
 | Method & path | Body / query | Success |
 | --- | --- | --- |
-| `GET /api/admin/resources` | `status` (default `PENDING`, oldest first), `departmentId?`, `q?`, `cursor?`, `limit?` | 200: items include `fileUrl` for previewing and `uploadedBy { name, email, studentId }` |
+| `GET /api/admin/resources` | `status` (default `PENDING`, oldest first), `departmentId?`, `q?`, `cursor?`, `limit?` | 200: items include `fileUrl` and `mimeType` for previewing and `uploadedBy { name, email, studentId }`. The console shows a preview only when the file is a PDF or an image. |
 | `PATCH /api/admin/resources/{id}/review` | `{ "decision": "APPROVE" }` or `{ "decision": "REJECT", "reason": "Scanned pages are unreadable." }` | 200: the resource. The uploader gets a notification and an email. |
 | `PATCH /api/admin/resources/{id}` | Any of `title`, `description`, `type`, `courseId`, `departmentId`, `semester`, `year`, `tags` | 200: the resource |
 | `DELETE /api/admin/resources/{id}` | none | 200: `{ "message": "Resource deleted.", "id": "…" }` (soft delete) |

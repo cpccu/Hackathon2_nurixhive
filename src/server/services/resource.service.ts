@@ -44,6 +44,7 @@ const moderationSelect = {
   tags: true,
   fileUrl: true,
   fileSize: true,
+  mimeType: true,
   isSample: true,
   courseId: true,
   departmentId: true,

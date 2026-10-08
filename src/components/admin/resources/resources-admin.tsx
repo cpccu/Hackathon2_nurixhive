@@ -30,11 +30,20 @@ interface ResourceRow {
   rejectionReason: string | null;
   downloadCount: number;
   createdAt: string;
-  fileUrl: string;
+  fileUrl: string | null;
   fileSize: number;
+  mimeType: string | null;
   department: { code: string };
   course: { code: string } | null;
   uploadedBy: { id: string; name: string; email: string; studentId: string | null };
+}
+
+/** What the console can show for a resource: a PDF or an image. Anything else (or no file) has no preview at all. */
+function previewKind(row: Pick<ResourceRow, "fileUrl" | "mimeType">): "pdf" | "image" | null {
+  if (!row.fileUrl) return null;
+  if (row.mimeType === "application/pdf") return "pdf";
+  if (row.mimeType?.startsWith("image/")) return "image";
+  return null;
 }
 
 interface EditValues {
@@ -200,9 +209,11 @@ export function ResourcesAdmin() {
       className: "whitespace-nowrap text-right",
       cell: (row) => (
         <div className="flex flex-nowrap justify-end gap-1">
-          <Button size="icon-sm" variant="ghost" aria-label={`Preview ${row.title}`} title="Preview PDF" onClick={() => setPreview(row)}>
-            <Eye />
-          </Button>
+          {previewKind(row) && (
+            <Button size="icon-sm" variant="ghost" aria-label={`Preview ${row.title}`} title="Preview file" onClick={() => setPreview(row)}>
+              <Eye />
+            </Button>
+          )}
           {row.status === "PENDING" && (
             <>
               <Button size="icon-sm" variant="soft" aria-label={`Approve ${row.title}`} title="Approve" onClick={() => void approve([row])}>
@@ -265,7 +276,17 @@ export function ResourcesAdmin() {
         }
       />
       <Dialog open={preview !== null} onClose={() => setPreview(null)} title={preview?.title ?? "Preview"} description={preview ? `${preview.uploadedBy.name} · ${formatBytes(preview.fileSize)}` : undefined} className="max-w-4xl">
-        {preview && <iframe src={`${preview.fileUrl}#toolbar=1&view=FitH`} title={`PDF preview: ${preview.title}`} className="h-[65dvh] w-full rounded-xl border border-border bg-surface-2" referrerPolicy="no-referrer" />}
+        {preview && previewKind(preview) === "pdf" && <iframe src={`${preview.fileUrl}#toolbar=1&view=FitH`} title={`PDF preview: ${preview.title}`} className="h-[65dvh] w-full rounded-xl border border-border bg-surface-2" referrerPolicy="no-referrer" />}
+        {/* eslint-disable-next-line @next/next/no-img-element -- moderation preview of an uploaded file; the size is unknown. */}
+        {preview && previewKind(preview) === "image" && <img src={preview.fileUrl ?? undefined} alt={`Preview: ${preview.title}`} className="mx-auto max-h-[65dvh] rounded-xl border border-border bg-surface-2 object-contain" referrerPolicy="no-referrer" />}
+        {preview && previewKind(preview) && (
+          <p className="mt-3 text-center text-sm text-fg-muted">
+            Not loading?{" "}
+            <a href={preview.fileUrl ?? undefined} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary hover:underline">
+              Open the file in a new tab
+            </a>
+          </p>
+        )}
       </Dialog>
       <ReasonDialog
         open={rejecting !== null}

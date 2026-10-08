@@ -1,12 +1,13 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { PUBLIC_NAV, SECONDARY_NAV } from "@/components/layout/nav-config";
+import { DashboardFooterLink } from "@/components/layout/dashboard-footer-link";
 import { InstallAppButton } from "@/components/layout/install-app-button";
 import { Logo } from "@/components/shared/logo";
 
 const ACCOUNT_LINKS = [
   { label: "Sign in", href: "/login" },
   { label: "Create account", href: "/signup" },
-  { label: "Dashboard", href: "/dashboard" },
   { label: "Search", href: "/search" },
   { label: "Staff console", href: "/admin/login" },
 ];
@@ -27,7 +28,7 @@ export function SiteFooter() {
         </div>
         <FooterColumn title="Explore" links={PUBLIC_NAV} />
         <FooterColumn title="Services" links={SECONDARY_NAV} />
-        <FooterColumn title="Account" links={ACCOUNT_LINKS} />
+        <FooterColumn title="Account" links={ACCOUNT_LINKS} extra={<DashboardFooterLink className="text-sm text-fg-muted transition hover:text-primary" />} />
         <FooterColumn title="About" links={ABOUT_LINKS} />
       </div>
       <div className="container-app flex flex-col items-center gap-2 pb-12 text-center">
@@ -52,7 +53,7 @@ export function SiteFooter() {
   );
 }
 
-function FooterColumn({ title, links }: { title: string; links: Array<{ label: string; href: string }> }) {
+function FooterColumn({ title, links, extra }: { title: string; links: Array<{ label: string; href: string }>; extra?: ReactNode }) {
   return (
     <nav aria-label={title}>
       <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-fg-subtle">{title}</h2>
@@ -64,6 +65,7 @@ function FooterColumn({ title, links }: { title: string; links: Array<{ label: s
             </Link>
           </li>
         ))}
+        {extra && <li>{extra}</li>}
       </ul>
     </nav>
   );

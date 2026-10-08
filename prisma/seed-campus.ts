@@ -18,8 +18,12 @@ const KB: Entry[] = [
   ["BUS", "Is the university bus free for students?", "Yes. The university bus service is free for enrolled students who show a valid City University ID card when boarding.", ["bus", "free", "fare", "transport", "shuttle", "gari"]],
   ["BUS", "How do I get a transport pass?", "Collect a transport pass from the Transport Office (Admin Building, ground floor) with your ID card and a passport-size photo. Passes are issued within two working days.", ["bus", "pass", "transport", "card"]],
   ["BUS", "Where is the Transport Office?", "The Transport Office is on the ground floor of the Admin Building, open {{WORKING}}, 9:00 AM to 4:00 PM.", ["transport", "office", "bus"]],
-  ["BUS", "Do buses run on {{OFF}}?", "No. Buses run {{WORKING}} only. There is no bus service on {{OFF}} (weekly off days) or on university holidays. The next bus after an off day is the first trip on {{FIRST}}.", ["bus", "wednesday", "thursday", "off day", "holiday", "schedule", "chuti", "বুধবার", "বৃহস্পতিবার"]],
+  ["BUS", "Do buses run on {{OFF}}?", "No. Buses run {{WORKING}} only. There is no bus service on {{OFF}} (weekly off days) or on university holidays. The next bus after an off day is the first trip on {{FIRST}}.", ["bus", "wednesday", "thursday", "off day", "holiday", "schedule", "chuti", "বুধবার", "বৃহস্পতিবার", "budhbar", "budhobar", "brihospotibar", "bihospotibar", "bihaspotibar", "shukrobar"]],
   ["BUS", "Which days does the university bus run?", "The university bus runs {{WORKING}}. It does not run on {{OFF}} (weekly off days) or on special closures announced in notices.", ["bus", "days", "schedule", "friday", "saturday", "sunday", "monday", "tuesday", "kon din"]],
+  ["BUS", "Do buses run on {{FIRST}}?", "Yes. {{FIRST}} is a normal working day at City University, so buses run on {{FIRST}} like on every other working day ({{WORKING}}). Only {{OFF}} have no bus service.", ["bus", "friday", "shukrobar", "শুক্রবার", "run", "service", "cholbe"]],
+  ["BUS", "Do buses run on Saturday, Sunday, Monday and Tuesday?", "Yes. Buses run on every working day: {{WORKING}}. The only days without a bus are {{OFF}} (weekly off days) and special closures announced as notices.", ["bus", "saturday", "sunday", "monday", "tuesday", "run", "days", "service"]],
+  ["BUS", "Is there a bus on a public holiday or special closure?", "No. When the university is closed for a public holiday or a special closure, the bus service is suspended too. CampusOS shows \"No bus service today\" on the Bus page and tells you the next day a bus runs.", ["bus", "holiday", "closure", "closed", "service", "chuti", "ছুটি"]],
+  ["BUS", "What should I do on {{OFF}} if I need to travel to campus?", "The university is closed and buses do not run on {{OFF}}. Plan your visit for {{FIRST}} or another working day ({{WORKING}}). The Bus page always shows the next day with a bus.", ["bus", "wednesday", "thursday", "off day", "travel", "next", "plan"]],
   ["BUS", "What happens if I miss the last bus from campus?", "The last scheduled bus leaves campus at about 5:30 PM. After that, use public transport from Birulia or Ashulia; the university does not run late-night buses except during exam weeks when announced.", ["bus", "last", "late", "campus"]],
   ["BUS", "Can I bring a guest on the university bus?", "No. University buses are for students, faculty and staff with a valid ID card only.", ["bus", "guest", "visitor"]],
   ["BUS", "How do I report a problem with a bus or driver?", "Report it through CampusOS Complaints (category: Transport) with the route code, time and date. Urgent safety issues should also be reported to the Transport Office immediately.", ["bus", "complaint", "driver", "transport"]],
@@ -108,8 +112,13 @@ const KB: Entry[] = [
   ["FAQ", "Who can I contact for CampusOS problems?", "Use the Complaints section with category IT Services, or contact the IT Help Desk.", ["campusos", "help", "support", "it"]],
   ["FAQ", "How do I get notified about notices for my department?", "Follow your department and courses in CampusOS. You'll get in-app notifications when new notices are posted for them.", ["notice", "follow", "department", "notification"]],
   ["GENERAL", "Which days is the university open?", "City University is open {{WORKING}}. {{OFF}} are the weekly off days, when classes and offices are closed and there is no bus service. Public holidays and special closures are announced as notices.", ["open", "working days", "days", "university", "khola", "friday", "saturday", "sunday", "monday", "tuesday"]],
-  ["GENERAL", "Is the university open on {{OFF}}?", "No. {{OFF}} are the weekly off days (ছুটি), so classes and offices are closed and buses do not run. The campus reopens on {{FIRST}}.", ["wednesday", "thursday", "off day", "holiday", "closed", "chuti", "বুধবার", "বৃহস্পতিবার", "ছুটি", "bondho"]],
-  ["GENERAL", "What are the weekly off days?", "The weekly off days are {{OFF}}. The university is open {{WORKING}}.", ["weekly off", "off day", "holiday", "weekend", "chuti", "ছুটি"]],
+  ["GENERAL", "Is the university open on {{OFF}}?", "No. {{OFF}} are the weekly off days (ছুটি), so classes and offices are closed and buses do not run. The campus reopens on {{FIRST}}.", ["wednesday", "thursday", "off day", "holiday", "closed", "chuti", "বুধবার", "বৃহস্পতিবার", "ছুটি", "bondho", "budhbar", "budhobar", "brihospotibar", "bihospotibar", "bihaspotibar", "shukrobar"]],
+  ["GENERAL", "Is the university open on {{FIRST}}?", "Yes. {{FIRST}} is a normal working day: classes, offices, the library and the bus service all run, the same as on the other working days ({{WORKING}}).", ["friday", "shukrobar", "শুক্রবার", "open", "working day", "class", "khola"]],
+  ["GENERAL", "Is the university open on weekends?", "City University's weekly off days are {{OFF}}, not the usual weekend. {{WORKING}} are working days, so classes, offices and buses run on Friday and Saturday too.", ["weekend", "friday", "saturday", "off day", "holiday", "chuti", "open"]],
+  ["GENERAL", "Are there classes on {{OFF}}?", "No. There are no classes and the offices are closed on {{OFF}}. Exams and events are not scheduled on those days unless a notice says otherwise.", ["class", "wednesday", "thursday", "off day", "closed", "exam", "budhbar", "brihospotibar"]],
+  ["GENERAL", "What happens when a public holiday falls on a working day?", "The university and the bus service close for that day. The holiday is added to the CampusOS campus calendar and announced as a notice, and the Bus page and the assistant answer \"closed\" for that date.", ["public", "holiday", "closure", "calendar", "closed", "chuti", "ছুটি"]],
+  ["GENERAL", "How do I know if the university is open today?", "Ask the assistant \"Is the university open today?\" or open the Bus page. CampusOS knows the weekly off days ({{OFF}}) and every announced holiday, and answers in Bangladesh time.", ["open", "today", "tomorrow", "calendar", "check", "ajke", "কাল"]],
+  ["GENERAL", "What are the weekly off days?", "The weekly off days are {{OFF}}. The university is open {{WORKING}}.", ["weekly off", "off day", "holiday", "weekend", "chuti", "ছুটি", "budhbar", "budhobar", "brihospotibar", "bihospotibar", "bihaspotibar", "shukrobar"]],
   ["FAQ", "When does the semester start?", "City University runs Spring (January), Summer (May) and Fall (September) semesters. Exact start dates are on the academic calendar and Notices page.", ["semester", "start", "calendar", "class"]],
 ];
 
@@ -170,7 +179,11 @@ export async function seedCampusContent(prisma: PrismaClient, logger: Logger): P
     if (existing) await prisma.knowledgeEntry.update({ where: { id: existing.id }, data });
     else await prisma.knowledgeEntry.create({ data: { ...data, sourceType: "MANUAL", createdById: admin.id } });
   }
-  logger.info("Seeded knowledge base (sample)", { count: KB.length });
+  // Retire sample entries that an older seed wrote and this one no longer has (for example the old "Do buses run on
+  // Friday?" answer from before the calendar rule). Entries an admin wrote or edited are never sample entries.
+  const current = KB.map(([, question]) => fillDays(question));
+  const retired = await prisma.knowledgeEntry.updateMany({ where: { sourceType: "MANUAL", isSample: true, deletedAt: null, question: { notIn: current } }, data: { deletedAt: new Date(), isPublished: false } });
+  logger.info("Seeded knowledge base (sample)", { count: KB.length, retired: retired.count });
 
   // Bus routes + trips; regenerated KB entries.
   for (const route of ROUTES) {

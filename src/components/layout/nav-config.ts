@@ -59,6 +59,9 @@ export const USER_NAV: Array<NavItem & { mobile?: boolean }> = [
 
 export const HOME_NAV: NavItem = { label: "Home", href: "/", icon: Home };
 
+/** Where "Dashboard" goes for this person: the admin console for staff, the student dashboard for everyone else. */
+export const dashboardHref = (isStaff: boolean): string => (isStaff ? "/admin/dashboard" : "/dashboard");
+
 /** Active when the path equals `href` or is nested under it (except "/" and "/dashboard"). */
 export function isActivePath(pathname: string, href: string): boolean {
   const base = href.split("?")[0] ?? href;

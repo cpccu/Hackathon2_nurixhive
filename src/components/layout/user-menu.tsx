@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/auth-provider";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { dashboardHref } from "@/components/layout/nav-config";
 import { DropdownMenu, type MenuItem } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toastPromise } from "@/lib/toast";
@@ -31,11 +32,11 @@ export function UserMenu({ showDashboardLink = true }: { showDashboardLink?: boo
   }
 
   const items: MenuItem[] = [
-    ...(showDashboardLink ? [{ type: "link" as const, label: "Dashboard", href: "/dashboard", icon: <LayoutDashboard /> }] : []),
+    ...(showDashboardLink ? [{ type: "link" as const, label: isStaff ? "Admin dashboard" : "Dashboard", href: dashboardHref(isStaff), icon: <LayoutDashboard /> }] : []),
     { type: "link", label: "My tickets", href: "/dashboard/registrations", icon: <Ticket /> },
     { type: "link", label: "Notifications", href: "/dashboard/notifications", icon: <Bell /> },
     { type: "link", label: "Profile & settings", href: "/dashboard/profile", icon: <UserRound /> },
-    ...(isStaff ? [{ type: "link" as const, label: "Admin console", href: "/admin/dashboard", icon: <ShieldCheck /> }] : []),
+    ...(isStaff ? [{ type: "link" as const, label: "My student view", href: "/dashboard", icon: <ShieldCheck /> }] : []),
     { type: "separator" },
     {
       type: "action",

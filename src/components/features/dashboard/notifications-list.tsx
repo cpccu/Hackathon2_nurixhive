@@ -2,8 +2,6 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bell, BellRing, CheckCheck, CircleDot } from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ListView } from "@/components/ui/list-view";
@@ -30,10 +28,9 @@ const TABS = [
   { value: "unread", label: "Unread" },
 ] as const;
 
-/** Notification centre with optimistic mark-read and mark-all-read. */
+/** Notification centre with mark-read and mark-all-read. A notification is plain text: clicking it never navigates. */
 export function NotificationsList() {
   const [tab, setTab] = useState<(typeof TABS)[number]["value"]>("all");
-  const router = useRouter();
   const queryClient = useQueryClient();
   const unreadOnly = tab === "unread";
   const list = useCursorList<NotificationRow>(["notifications", "list", unreadOnly], "/api/notifications", { query: { unreadOnly: unreadOnly || undefined }, limit: 20 });
@@ -46,11 +43,6 @@ export function NotificationsList() {
   });
   const markAll = useMutation({ mutationFn: () => api.post<{ marked: number }>("/api/notifications/read-all"), onSettled: afterChange });
   const hasUnread = list.items.some((row) => !row.readAt);
-
-  const open = (row: NotificationRow) => {
-    if (!row.readAt) markRead.mutate(row.id);
-    if (row.link) router.push(row.link);
-  };
 
   return (
     <div className="space-y-6">
@@ -76,26 +68,12 @@ export function NotificationsList() {
               {row.readAt ? <Bell className="size-4" /> : <BellRing className="size-4" />}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="font-semibold [overflow-wrap:anywhere]">
-                {row.link ? (
-                  <Link
-                    href={row.link}
-                    onClick={() => {
-                      if (!row.readAt) markRead.mutate(row.id);
-                    }}
-                    className="hover:text-primary hover:underline"
-                  >
-                    {row.title}
-                  </Link>
-                ) : (
-                  row.title
-                )}
-              </p>
+              <p className="font-semibold [overflow-wrap:anywhere]">{row.title}</p>
               <p className="mt-0.5 text-sm text-fg-muted [overflow-wrap:anywhere]">{row.body}</p>
               <p className="mt-1 text-xs text-fg-subtle">{formatRelative(row.createdAt)}</p>
             </div>
             {!row.readAt && (
-              <Button variant="ghost" size="icon-sm" aria-label={`Mark "${row.title}" as read`} onClick={() => (row.link ? open(row) : markRead.mutate(row.id))}>
+              <Button variant="ghost" size="icon-sm" aria-label={`Mark "${row.title}" as read`} onClick={() => markRead.mutate(row.id)}>
                 <CircleDot />
               </Button>
             )}

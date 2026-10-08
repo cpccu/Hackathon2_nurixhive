@@ -457,6 +457,6 @@ Migrations are SQL files under `prisma/migrations`, applied in order by `prisma 
   - staff and demo student accounts from environment variables (`ADMIN1_EMAIL` to `ADMIN4_EMAIL`, `DEMO_USER_EMAIL`, with their passwords),
   - 9 departments, 56 courses and 12 clubs,
   - 30 events dated relative to the seed day and never on Wednesday or Thursday,
-  - 60 sample resources, 86 knowledge-base entries, 6 bus routes with Friday to Tuesday trips, 8 notices, 5 forms, 6 lost and found posts,
+  - 60 sample resources, 95 sample FAQ entries (plus generated bus-route and notice entries), 6 bus routes with Friday to Tuesday trips, 8 notices, 5 forms, 6 lost and found posts,
   - one sample closure (Victory Day, 16 December 2026).
 - **Fresh database:** create an empty database, set `DATABASE_URL` and `DIRECT_URL`, run `npm run db:deploy`, then `npm run db:seed`.

@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 
 /** Signed-in portal chrome: desktop sidebar, topbar, mobile bottom tabs. Redirects guests to /login. */
 export function UserShell({ children }: { children: ReactNode }) {
-  const { status } = useAuth();
+  const { status, isStaff } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -64,7 +64,7 @@ export function UserShell({ children }: { children: ReactNode }) {
             <SearchTrigger compact />
             <NotificationBell />
             <ThemeToggle />
-            <UserMenu showDashboardLink={false} />
+            <UserMenu showDashboardLink={isStaff} />
           </div>
         </header>
         <main id="main" tabIndex={-1} className="px-4 pb-28 pt-6 sm:px-6 lg:pb-12">

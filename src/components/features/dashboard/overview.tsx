@@ -139,13 +139,7 @@ export function DashboardOverview() {
                 <li key={row.id} className="p-4">
                   <p className="flex items-center gap-2 font-semibold">
                     {!row.readAt && <span className="size-2 rounded-full bg-primary" aria-label="Unread" />}
-                    {row.link ? (
-                      <Link href={row.link} className="hover:text-primary hover:underline">
-                        {row.title}
-                      </Link>
-                    ) : (
-                      row.title
-                    )}
+                    {row.title}
                   </p>
                   <p className="mt-0.5 line-clamp-2 text-sm text-fg-muted">{row.body}</p>
                   <p className="mt-1 text-xs text-fg-subtle">{formatRelative(row.createdAt)}</p>

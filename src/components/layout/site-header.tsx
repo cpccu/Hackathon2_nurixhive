@@ -5,7 +5,7 @@ import { LayoutDashboard, LogIn, Menu } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { isActivePath, PUBLIC_NAV, SECONDARY_NAV } from "@/components/layout/nav-config";
+import { dashboardHref, isActivePath, PUBLIC_NAV, SECONDARY_NAV } from "@/components/layout/nav-config";
 import { OPEN_MENU_EVENT } from "@/components/layout/public-tab-bar";
 import { UserMenu } from "@/components/layout/user-menu";
 import { useAuth } from "@/components/providers/auth-provider";
@@ -83,7 +83,7 @@ export function SiteHeader() {
 }
 
 function MobileDrawer({ open, onClose, pathname }: { open: boolean; onClose: () => void; pathname: string }) {
-  const { user } = useAuth();
+  const { user, isStaff } = useAuth();
   // Close when navigation completes.
   useEffect(() => {
     onClose();
@@ -131,7 +131,7 @@ function MobileDrawer({ open, onClose, pathname }: { open: boolean; onClose: () 
         <div className="mt-auto flex items-center gap-2 border-t border-border pt-4">
           {user ? (
             <Button asChild className="flex-1">
-              <Link href="/dashboard">
+              <Link href={dashboardHref(isStaff)}>
                 <LayoutDashboard /> Dashboard
               </Link>
             </Button>

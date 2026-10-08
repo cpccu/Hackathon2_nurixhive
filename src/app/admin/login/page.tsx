@@ -1,4 +1,4 @@
-import { ShieldCheck } from "lucide-react";
+import { ArrowLeft, ShieldCheck } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -20,6 +20,9 @@ export default function AdminLoginPage() {
     <div className="relative isolate grid min-h-dvh place-items-center overflow-hidden bg-[#070816] px-4 py-10 text-white">
       <div aria-hidden className="absolute inset-0 -z-10 bg-[radial-gradient(60%_50%_at_50%_0%,rgba(16,185,129,0.22),transparent),radial-gradient(50%_40%_at_100%_100%,rgba(99,102,241,0.28),transparent)]" />
       <div aria-hidden className="bg-grid absolute inset-0 -z-10 opacity-[0.12]" />
+      <Link href="/" className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3.5 py-2 text-sm font-semibold text-white/85 transition hover:bg-white/15 hover:text-white">
+        <ArrowLeft className="size-4" aria-hidden /> Back to home page
+      </Link>
       <div className="absolute right-4 top-4">
         <ThemeToggle />
       </div>
@@ -43,6 +46,10 @@ export default function AdminLoginPage() {
           Not staff?{" "}
           <Link href="/login" className="font-semibold text-emerald-300 hover:underline">
             Student sign in
+          </Link>
+          {" · "}
+          <Link href="/" className="font-semibold text-emerald-300 hover:underline">
+            Home page
           </Link>
         </p>
       </main>
