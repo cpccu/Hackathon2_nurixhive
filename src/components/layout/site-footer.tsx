@@ -10,11 +10,13 @@ const ACCOUNT_LINKS = [
   { label: "Staff console", href: "/admin/login" },
 ];
 
+const ABOUT_LINKS = [{ label: "Contributors", href: "/contributors" }];
+
 /** Site footer (server component, zero client JS). */
 export function SiteFooter() {
   return (
     <footer className="relative mt-24 border-t border-border bg-surface/60">
-      <div className="container-app grid gap-10 py-14 md:grid-cols-[1.4fr_repeat(3,1fr)]">
+      <div className="container-app grid gap-10 py-14 md:grid-cols-[1.4fr_repeat(2,1fr)_1fr_0.8fr]">
         <div className="max-w-sm space-y-4">
           <Logo tagline />
           <p className="text-sm leading-relaxed text-fg-muted">
@@ -25,11 +27,16 @@ export function SiteFooter() {
         <FooterColumn title="Explore" links={PUBLIC_NAV} />
         <FooterColumn title="Services" links={SECONDARY_NAV} />
         <FooterColumn title="Account" links={ACCOUNT_LINKS} />
+        <FooterColumn title="About" links={ABOUT_LINKS} />
       </div>
       <div className="border-t border-border">
         <div className="container-app flex flex-col gap-2 py-5 text-xs text-fg-subtle sm:flex-row sm:items-center sm:justify-between">
           <p>
-            © CampusOS · City University, Bangladesh. Designed &amp; developed by <span className="font-semibold text-fg-muted">Nurix Hive</span> team.
+            © CampusOS · City University, Bangladesh. Designed &amp; developed by the{" "}
+            <Link href="/contributors" prefetch={false} className="font-semibold text-fg-muted underline-offset-2 transition hover:text-primary hover:underline">
+              Nurix Hive
+            </Link>{" "}
+            team.
           </p>
           <p>
             Press <kbd className="rounded border border-border px-1 font-sans">Ctrl</kbd> + <kbd className="rounded border border-border px-1 font-sans">K</kbd> to search anywhere.

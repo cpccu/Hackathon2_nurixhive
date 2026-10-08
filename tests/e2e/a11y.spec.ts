@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 import { BASE_URL, expect, settle, staffTest as test } from "./fixtures";
 
-const PUBLIC_PAGES = ["/", "/events", "/clubs", "/resources", "/bus", "/notices", "/helpdesk", "/lost-found", "/forms", "/search?q=bus", "/login", "/signup", "/forgot-password", "/complaints/track", "/maintenance"];
+const PUBLIC_PAGES = ["/", "/events", "/clubs", "/resources", "/bus", "/notices", "/helpdesk", "/lost-found", "/forms", "/contributors", "/search?q=bus", "/login", "/signup", "/forgot-password", "/complaints/track", "/maintenance"];
 const ADMIN_PAGES = ["/admin/dashboard", "/admin/events", "/admin/events/new", "/admin/clubs", "/admin/notices", "/admin/forms", "/admin/bus", "/admin/helpdesk", "/admin/academics", "/admin/resources", "/admin/lost-found", "/admin/complaints", "/admin/users", "/admin/audit-log", "/admin/settings"];
 
 /** WCAG 2.1 A/AA rules; serious and critical violations fail the run. */

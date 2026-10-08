@@ -181,10 +181,13 @@ test.describe("Admin portal: content reaches the public site", () => {
       await expect(page.getByRole("status").filter({ hasText: message })).toBeVisible();
 
       expect((await admin.patch("/api/admin/settings", { data: { bannerMessage: null, maintenanceMode: true, maintenanceMessage: "E2E maintenance window" } })).ok()).toBeTruthy();
-      await expect
-        .poll(async () => (await page.request.get("/events")).status(), { timeout: 30_000, intervals: [1000] })
-        .toBe(503);
-      expect((await page.request.get("/api/events")).status()).toBe(503);
+      // Visitors get a full-screen cover; reading the API still works, writes are refused, health stays up.
+      await expect(async () => {
+        await page.reload();
+        await expect(page.getByRole("alertdialog").getByText("E2E maintenance window")).toBeVisible({ timeout: 4_000 });
+      }).toPass({ timeout: 40_000, intervals: [1_000] });
+      expect((await page.request.get("/api/events")).status()).toBe(200);
+      expect((await page.request.post("/api/complaints", { data: {}, headers: { origin: BASE_URL } })).status()).toBe(503);
       expect((await page.request.get("/api/health")).status()).toBe(200);
 
       // Staff are not affected.
@@ -192,15 +195,18 @@ test.describe("Admin portal: content reaches the public site", () => {
       const staffPage = await staffContext.newPage();
       await staffPage.goto("/events");
       await expect(staffPage.getByRole("heading", { level: 1 })).toBeVisible();
+      await expect(staffPage.getByRole("alertdialog")).toHaveCount(0);
       await staffContext.close();
       await visitor.close();
     } finally {
       await admin.patch("/api/admin/settings", { data: { bannerMessage: null, maintenanceMode: false, maintenanceMessage: null } });
       await admin.dispose();
     }
-    const after = await playwright.request.newContext({ baseURL: BASE_URL });
-    await expect.poll(async () => (await after.get("/events")).status(), { timeout: 30_000, intervals: [1000] }).toBe(200);
-    await after.dispose();
+    const after = await browser.newContext({ baseURL: BASE_URL });
+    const afterPage = await after.newPage();
+    await afterPage.goto("/events");
+    await expect(afterPage.getByRole("alertdialog")).toHaveCount(0);
+    await after.close();
   });
 });
 

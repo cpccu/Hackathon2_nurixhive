@@ -12,7 +12,16 @@ All notable changes to CampusOS. Dates are Asia/Dhaka. Versions follow the miles
 - Chatbot: intents for "is the university open today/tomorrow", "next working day" and "which days does the bus run", in English, Banglish and Bangla.
 - Events: `confirmOffDay` / `OFF_DAY_CONFIRMATION_REQUIRED`, off-day badges, Friday-first calendar, Friday to Thursday "This week" filter.
 - `Resource.courseName` (migration `20261012000000_resource_course_name`) so a student can upload for a course that is not in the list.
+- **Contributors page** (`/contributors`, linked from the footer and a team band on the landing page): portrait, role, skills, experience and a contact link for each team member. Data lives in `src/config/contributors.ts`; photos are resized WebP files in `public/contributors/`. Each person has their batch (CSE 62, Day), an email link and a WhatsApp link for urgent contact.
+- **Landing page redesign:** animated colour glows, an orbiting product preview with an assistant chat card, highlight chips, a campus-week strip (Friday to Thursday, off days marked, today highlighted), richer module and scenario cards, a team band, and a shine on the main buttons. Scroll reveals use CSS scroll-driven animation (no JavaScript, content is never hidden), and everything respects `prefers-reduced-motion`.
 - `docs/REQUIREMENTS_AUDIT.md`, `docs/SUBMISSION_CHECKLIST.md`, regression tests (`tests/unit/regressions.test.ts`, `tests/e2e/regressions.spec.ts`), calendar tests (`tests/unit/campus-calendar.test.ts`, `tests/e2e/campus-calendar.spec.ts`).
+
+### Performance
+
+- **The landing page is now fully static.** It used to render four live sections per request (`connection()`), which started a server function on every visit and rebuilt hourly cache keys, so the first visitor of each hour waited for the database. One tag-cached entry (`getHomeFeed`) now holds everything, and the time-dependent parts (this week's events, upcoming count, "2 hours ago", next bus, today in the campus-week strip) are finished in the browser from the Dhaka clock. `/` is served from the CDN with its data inline.
+- **`proxy.ts` no longer runs for public and auth pages** (matcher limited to `/api`, `/admin` and the signed-in area). Before, every page view started the proxy and could trigger a second request to `/api/settings/public`. Maintenance mode now covers pages with a full-screen overlay driven by the cached flag; the proxy still refuses API writes, and read-only API calls skip the maintenance lookup.
+- The bus schedule module no longer imports zod, which removed about 30 kB (gzip) of JavaScript from every page that shows the next-bus widget (`src/server/domain/bus-schedule-schemas.ts` holds the schemas).
+- framer-motion's animation features load on demand (`LazyMotion` with a dynamic import); the hero heading paints immediately instead of waiting for an entrance animation.
 
 ### Fixed
 

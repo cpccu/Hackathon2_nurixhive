@@ -26,6 +26,9 @@ This guide covers automated checks (lint, types, unit tests, Playwright e2e) and
 
 | File | Scenario |
 | --- | --- |
+| `contributors.spec.ts` | Footer link opens `/contributors`, both people show with loaded portraits, batch, a `mailto:` link and a `wa.me` WhatsApp link; the landing page fills in stats, next-bus panel, campus-week strip (7 days, today marked) and the team band |
+| `campus-calendar.spec.ts` | Wednesday/Thursday off-day UI with a mocked Dhaka clock, weekday selector, `/api/bus/next` shape, `BUS_DAY_NOT_ALLOWED`, closure CRUD, `confirmOffDay` for events |
+| `regressions.spec.ts` | The four pre-submission bugs: login lands on the dashboard (no maintenance page), Google Calendar opens in a new tab, custom course on upload, lost & found status refreshes without a reload |
 | `auth.spec.ts` | Sign up through the form, enter the OTP, land on the dashboard, sign in again; wrong password inline error; guest redirect with `?next=` |
 | `events.spec.ts` | Open an event, register, see the QR ticket dialog, find it under *My tickets*, cancel; calendar view toggle |
 | `admin.spec.ts` | Role matrix for ADMIN, CLUB_ADMIN and MODERATOR (menu items, blocked route, API 403), students and anonymous users are refused, event lifecycle (draft, publish, appears on the public API, cancel with reason, delete), notice posted and deleted with the public board following, site banner and maintenance mode (503 for visitors, staff unaffected), live check-in by "find attendee", duplicate check-in, capacity-1 race with two simultaneous registrations, deactivated user with a live session, club-admin scope |

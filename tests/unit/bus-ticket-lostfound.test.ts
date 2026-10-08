@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BUS_SERVICE_DAYS, WEEKDAY } from "@/config/campus-calendar";
+import { busStopsSchema } from "@/server/domain/bus-schedule-schemas";
 import {
-  busStopsSchema,
   describeDays,
   dhakaClock,
   findStop,

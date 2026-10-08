@@ -1801,7 +1801,7 @@ Banner and maintenance flag. The public layout and the proxy read it.
 - **PATCH body** (strict, at least one field): `bannerMessage` (string ≤ 300 or `null`), `bannerTone` (`info` | `warning` | `urgent`), `maintenanceMode` (boolean), `maintenanceMessage` (string ≤ 300 or `null`).
 - **Success (200):** the full settings document (same shape as above).
 - **Errors:** 400, 401, 403, 429.
-- **Side effects:** audit entry `settings.update`; tag `settings` expired. While `maintenanceMode` is on, the proxy answers every non-staff request with HTTP 503 (`/maintenance` page for pages, `{"error":{"code":"MAINTENANCE"}}` for APIs). Exempt paths: `/admin/*`, `/api/admin/*`, `/api/auth/*`, `/api/health`, `/api/settings/*`, `/api/cron/*`, `/api/revalidate`. Each server instance caches the flag for 10 s, so the switch takes effect within about 10 s everywhere.
+- **Side effects:** audit entry `settings.update`; tag `settings` expired. While `maintenanceMode` is on, visitors who are not staff see a full-screen "We will be right back" cover on every page except `/admin/*` (the root layout reads the tag-cached flag, so the cover appears as soon as the `settings` tag expires). The proxy refuses API **writes** from non-staff with HTTP 503 (`{"error":{"code":"MAINTENANCE"}}`); API reads stay available. Exempt API paths: `/api/admin/*`, `/api/auth/*`, `/api/health`, `/api/settings/*`, `/api/cron/*`, `/api/revalidate`. Each server instance caches the flag used for API writes for 10 s.
 
 #### `GET /api/admin/clubs/{id}/members` · `POST` · `PATCH /{userId}` · `DELETE /{userId}`
 
@@ -1952,7 +1952,7 @@ tests/e2e/                      # Playwright specs + fixtures
 
 ## Frontend Architecture
 
-**Rendering model.** Next.js 16 with Cache Components. Static shells (hero, module cards, FAQ preview) are prerendered. Live sections (stats, this-week events, next bus, notices ticker) call `await connection()` inside `<Suspense>` and stream in. Public read data comes from `"use cache"` fetchers tagged via `src/lib/cache-tags.ts`. There is no time-based `revalidate`. Every mutation calls the matching `revalidateTag` helper. `getPublicStats()` (in `src/server/queries/platform.queries.ts`) is a server-side cached fetcher, not an HTTP endpoint, so it has no API reference entry.
+**Rendering model.** Next.js 16 with Cache Components. The landing page is fully prerendered and served from the CDN with its data inline: it reads one tag-cached entry (`getHomeFeed` in `src/server/queries/home.queries.ts`) and never calls `connection()`. The parts that depend on the current time (this week's events, the "upcoming" count, "2 hours ago", the next bus and the highlighted day in the campus-week strip) are finished in the browser from the Dhaka clock, so a visit never starts a server function. `proxy.ts` only runs for `/api`, `/admin` and the signed-in student area, not for public pages. Public read data comes from `"use cache"` fetchers tagged via `src/lib/cache-tags.ts`. There is no time-based `revalidate`. Every mutation calls the matching `revalidateTag` helper. `getPublicStats()` (in `src/server/queries/platform.queries.ts`) is a server-side cached fetcher, not an HTTP endpoint, so it has no API reference entry.
 
 **Route groups.**
 
@@ -1992,7 +1992,8 @@ Every mutation shows a toast (`toastPromise` wraps `toast.promise`). Uploads: im
 
 | Area | Route | Notes |
 | --- | --- | --- |
-| Landing | `/` | Live stats, this-week events, next-bus widget, notices ticker, module cards, FAQ preview |
+| Landing | `/` | Animated hero, live stats, this-week events, next-bus widget, campus-week strip (Friday to Thursday, today highlighted), notices ticker, module cards, FAQ preview, team band |
+| Contributors | `/contributors` | The Nurix Hive team: portrait, batch, role, skills, experience, highlights, an email link and a WhatsApp link for urgent contact (data in `src/config/contributors.ts`) |
 | Events | `/events`, `/events/[slug]`, `/clubs`, `/clubs/[slug]` | Grid, list and month-calendar views, URL-synced filters, countdown, capacity bar, optimistic register or cancel, QR ticket, `.ics` and Google Calendar, share, related events, Event JSON-LD |
 | Resources | `/resources`, `/resources/[id]` | Sidebar filters (sheet on mobile), typo-tolerant search with highlighting, "Previous questions" shortcut, lazy PDF preview, download, bookmark, report |
 | Helpdesk | `/helpdesk`, `/helpdesk/[id]` | Category chips with counts, highlighted search, accordion answers, *Was this helpful?*, *Ask the assistant*, FAQPage JSON-LD |

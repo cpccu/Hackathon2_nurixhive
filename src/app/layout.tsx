@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Hind_Siliguri, Plus_Jakarta_Sans } from "next/font/google";
 import type { ReactNode } from "react";
+import { MaintenanceGate } from "@/components/layout/maintenance-gate";
 import { AppProviders } from "@/components/providers/app-providers";
 import { CommandPaletteHost } from "@/components/shared/command-palette-trigger";
 import { JsonLd } from "@/components/shared/json-ld";
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <AppProviders>
           {children}
           <CommandPaletteHost />
+          <MaintenanceGate />
         </AppProviders>
         <JsonLd data={[organizationJsonLd(), websiteJsonLd()]} />
       </body>

@@ -85,6 +85,6 @@ Final run on a stable tree: **91 passed, 0 failed, 1 skipped** (17.4 min). This 
 5. `script-src` keeps `'unsafe-inline'` (Next.js inline bootstrap scripts); a nonce-based CSP would remove it.
 6. Five dev-only `npm audit` findings remain under `eslint-config-next` (lint tooling, never shipped, no patched release).
 7. Helpdesk "helpful" feedback is stored client-side only; reporting a resource goes through a complaint.
-8. The maintenance flag is cached for 10 seconds per instance, so switching it takes up to 10 seconds to take effect everywhere. The proxy fails open if the flag cannot be read.
+8. Maintenance mode covers pages with a full-screen overlay (the cached flag expires with the `settings` tag) and blocks API writes in the proxy, which caches the flag for 10 seconds per instance and fails open if it cannot be read. Page HTML is still delivered to visitors underneath the overlay.
 9. Vercel's first request after idle can take 1 to 3 seconds (cold function plus Neon wake-up); later requests are served from the cache.
 10. Performance numbers are local measurements, not Vercel measurements.

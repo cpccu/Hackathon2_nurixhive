@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { BusDirection, FollowTargetType, NoticeCategory } from "@/generated/prisma/enums";
-import { busStopsSchema, departureTimeSchema } from "@/server/domain/bus-schedule";
+import { busStopsSchema, departureTimeSchema } from "@/server/domain/bus-schedule-schemas";
 import { uploadUrlSchema } from "@/lib/upload-url";
 import { idSchema, paginationShape } from "@/lib/validation";
 

@@ -3,6 +3,7 @@ import {
   ArrowRight,
   BellRing,
   BookOpenCheck,
+  Bot,
   Bus,
   CalendarCheck2,
   CalendarDays,
@@ -12,6 +13,7 @@ import {
   MessageSquareWarning,
   PackageSearch,
   ScanLine,
+  ShieldCheck,
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
@@ -19,6 +21,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { AskAssistantButton } from "@/components/features/home/ask-assistant-button";
+import { CampusWeekStrip } from "@/components/features/home/campus-week-strip";
+import { ContributorsBand } from "@/components/features/home/contributors-band";
 import { HeroSearch } from "@/components/features/home/hero-search";
 import { CardRowSkeleton, LiveStats, LiveStatsSkeleton, NextBusWidget, NoticesTicker, PanelSkeleton, WeekEvents } from "@/components/features/home/live-sections";
 import { JsonLd } from "@/components/shared/json-ld";
@@ -49,7 +53,7 @@ export default function HomePage() {
         </Suspense>
       </section>
 
-      <section aria-labelledby="week-title" className="container-app mt-20">
+      <section aria-labelledby="week-title" className="container-app reveal mt-20">
         <SectionHeading id="week-title" eyebrow="Happening now" title="This week on campus" description="Workshops, contests and fests from every club - register in one tap and get a QR ticket." href="/events" cta="All events" />
         <Suspense fallback={<CardRowSkeleton />}>
           <WeekEvents />
@@ -58,7 +62,11 @@ export default function HomePage() {
 
       <ModuleGrid />
 
-      <section aria-labelledby="bus-title" className="container-app mt-24 grid grid-cols-1 items-stretch gap-6 lg:grid-cols-[1fr_1.1fr] lg:gap-10">
+      <section aria-label="The campus week" className="container-app reveal mt-20">
+        <CampusWeekStrip />
+      </section>
+
+      <section aria-labelledby="bus-title" className="container-app reveal mt-24 grid grid-cols-1 items-stretch gap-6 lg:grid-cols-[1fr_1.1fr] lg:gap-10">
         <div className="flex flex-col justify-center">
           <p className="text-sm font-semibold uppercase tracking-wider text-accent">Never miss the bus</p>
           <h2 id="bus-title" className="mt-2 font-display text-h2 font-bold tracking-tight">Live next-bus finder, in Dhaka time</h2>
@@ -81,7 +89,7 @@ export default function HomePage() {
 
       <Scenarios />
 
-      <section aria-labelledby="faq-title" className="container-app mt-24 grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-14">
+      <section aria-labelledby="faq-title" className="container-app reveal mt-24 grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-14">
         <div>
           <p className="text-sm font-semibold uppercase tracking-wider text-primary">Helpdesk</p>
           <h2 id="faq-title" className="mt-2 font-display text-h2 font-bold tracking-tight">Answers, before you ask</h2>
@@ -100,10 +108,19 @@ export default function HomePage() {
         </Suspense>
       </section>
 
+      <ContributorsBand />
+
       <CtaBand />
     </>
   );
 }
+
+const HERO_CHIPS = [
+  { icon: ScanLine, label: "QR event tickets" },
+  { icon: Bus, label: "Live bus countdown" },
+  { icon: Bot, label: "Banglish assistant" },
+  { icon: ShieldCheck, label: "Anonymous complaints" },
+];
 
 function Hero() {
   return (
@@ -111,22 +128,34 @@ function Hero() {
       <div className="bg-mesh absolute inset-0 -z-20" aria-hidden />
       <div className="bg-grid absolute inset-0 -z-10 opacity-60" aria-hidden />
       <div className="grain absolute inset-0 -z-10" aria-hidden />
+      {/* Drifting colour glows: transform-only animation, decorative. */}
+      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden>
+        <span className="absolute -left-28 -top-10 size-[22rem] animate-aurora rounded-full bg-primary/25 blur-3xl sm:size-[28rem]" />
+        <span className="absolute -right-24 top-12 size-[20rem] animate-aurora-slow rounded-full bg-accent/20 blur-3xl sm:size-[26rem]" />
+        <span className="absolute -bottom-32 left-1/3 hidden size-[24rem] animate-aurora rounded-full bg-saffron/15 blur-3xl sm:block" />
+      </div>
       <div className="container-app grid grid-cols-1 items-center gap-12 lg:grid-cols-[1.15fr_0.85fr]">
         <div className="min-w-0 max-w-3xl">
-          <p className="glass inline-flex animate-fade-up items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold text-fg-muted shadow-sm sm:text-sm">
-            <Sparkles className="size-4 text-saffron" aria-hidden /> Built for City University students
+          <p className="inline-flex animate-fade-up rounded-full bg-brand-gradient p-px shadow-sm">
+            <span className="glass inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold text-fg-muted sm:text-sm">
+              <Sparkles className="size-4 text-saffron" aria-hidden /> Built for City University students
+              <span className="relative ml-1 flex size-2" aria-hidden>
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-60" />
+                <span className="relative inline-flex size-2 rounded-full bg-success" />
+              </span>
+            </span>
           </p>
-          <h1 className="mt-6 animate-fade-up font-display text-display font-extrabold tracking-tight [animation-delay:80ms]">
+          <h1 className="mt-6 font-display text-display font-extrabold tracking-tight">
             One place for <span className="text-gradient">all of City University</span>
           </h1>
-          <p className="mt-6 max-w-2xl animate-fade-up text-lead text-fg-muted [animation-delay:160ms]">
+          <p className="mt-6 max-w-2xl animate-fade-up text-lead text-fg-muted [animation-delay:60ms]">
             Events and clubs, notes and previous questions, live bus times, notices and class cancellations, lost &amp; found and a campus assistant, together in one fast app.
           </p>
-          <div className="mt-8 animate-fade-up [animation-delay:240ms]">
+          <div className="mt-8 animate-fade-up [animation-delay:120ms]">
             <HeroSearch />
           </div>
-          <div className="mt-6 flex animate-fade-up flex-wrap gap-3 [animation-delay:320ms]">
-            <Button asChild size="lg" variant="gradient">
+          <div className="mt-6 flex animate-fade-up flex-wrap gap-3 [animation-delay:180ms]">
+            <Button asChild size="lg" variant="gradient" className="sheen">
               <Link href="/signup">
                 Get started free <ArrowRight />
               </Link>
@@ -137,6 +166,13 @@ function Hero() {
               </Link>
             </Button>
           </div>
+          <ul className="mt-8 flex animate-fade-up flex-wrap gap-2 [animation-delay:240ms]" aria-label="Highlights">
+            {HERO_CHIPS.map(({ icon: Icon, label }) => (
+              <li key={label} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface/70 px-3 py-1.5 text-xs font-semibold text-fg-muted sm:text-sm">
+                <Icon className="size-3.5 text-primary sm:size-4" aria-hidden /> {label}
+              </li>
+            ))}
+          </ul>
         </div>
         <HeroVisual />
       </div>
@@ -149,7 +185,12 @@ function HeroVisual() {
   return (
     <div className="relative mx-auto hidden aspect-square w-full max-w-md lg:block 3xl:max-w-lg" aria-hidden>
       <div className="absolute inset-8 rounded-[2.5rem] bg-brand-gradient opacity-25 blur-3xl" />
-      <div className="glass absolute left-0 top-6 w-72 animate-float rounded-3xl p-5 shadow-lg">
+      <div className="absolute inset-4 animate-orbit rounded-full border border-dashed border-primary/30">
+        <span className="absolute -top-1.5 left-1/2 size-3 rounded-full bg-primary shadow-glow" />
+        <span className="absolute bottom-10 right-2 size-2.5 rounded-full bg-accent" />
+        <span className="absolute left-3 top-1/3 size-2 rounded-full bg-saffron" />
+      </div>
+      <div className="glass absolute left-0 top-14 w-60 animate-float rounded-3xl p-4 shadow-lg">
         <div className="flex items-center gap-3">
           <span className="grid size-11 place-items-center rounded-2xl bg-primary-soft text-primary-soft-fg">
             <CalendarCheck2 className="size-5" />
@@ -180,6 +221,17 @@ function HeroVisual() {
           in 12 <span className="text-base font-semibold text-fg-muted">min</span>
         </p>
         <p className="mt-1 text-xs text-fg-subtle">7:15 AM → Campus</p>
+      </div>
+      <div className="glass absolute -top-2 right-0 w-48 animate-float rounded-2xl p-3.5 shadow-md [animation-delay:-1.5s]">
+        <p className="flex items-center gap-2 text-xs font-semibold">
+          <Bot className="size-4 text-primary" /> Ask CampusOS
+        </p>
+        <p className="mt-2 rounded-xl rounded-bl-sm bg-surface px-3 py-2 text-xs">Is the university open tomorrow?</p>
+        <p className="mt-1.5 flex items-center gap-1 px-1">
+          <span className="size-1.5 animate-blink rounded-full bg-primary" />
+          <span className="size-1.5 animate-blink rounded-full bg-primary [animation-delay:0.2s]" />
+          <span className="size-1.5 animate-blink rounded-full bg-primary [animation-delay:0.4s]" />
+        </p>
       </div>
       <div className="glass absolute bottom-0 left-10 flex animate-float items-center gap-3 rounded-2xl px-4 py-3 shadow-md [animation-delay:-5s]">
         <BellRing className="size-5 text-danger" />
@@ -245,16 +297,16 @@ const MODULES: Array<{ title: string; description: string; href: string; icon: L
 
 function ModuleGrid() {
   return (
-    <section aria-labelledby="modules-title" className="container-app mt-24">
+    <section aria-labelledby="modules-title" className="container-app reveal mt-24">
       <SectionHeading id="modules-title" eyebrow="Everything in one place" title="Four modules. One campus." description="CampusOS replaces scattered Facebook groups, notice boards and photocopied timetables with one place you can trust." />
       <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {MODULES.map((module) => {
           const Icon = module.icon;
           return (
             <li key={module.title}>
-              <Link href={module.href} className="group relative flex h-full flex-col overflow-hidden rounded-3xl border border-border bg-surface p-6 shadow-xs transition duration-300 hover:-translate-y-1 hover:shadow-lg">
-                <div className={`absolute inset-x-0 top-0 h-32 bg-gradient-to-b ${module.gradient}`} aria-hidden />
-                <span className={`relative grid size-12 place-items-center rounded-2xl bg-surface shadow-sm ${module.iconClass}`}>
+              <Link href={module.href} className="group relative flex h-full flex-col overflow-hidden rounded-3xl border border-border bg-surface p-6 shadow-xs transition duration-300 hover:-translate-y-1.5 hover:border-primary/40 hover:shadow-lg">
+                <div className={`absolute inset-x-0 top-0 h-32 bg-gradient-to-b ${module.gradient} transition-all duration-500 group-hover:h-40`} aria-hidden />
+                <span className={`relative grid size-12 place-items-center rounded-2xl bg-surface shadow-sm transition duration-300 group-hover:-rotate-6 group-hover:scale-110 ${module.iconClass}`}>
                   <Icon className="size-6" />
                 </span>
                 <h3 className="relative mt-5 font-display text-xl font-semibold">{module.title}</h3>
@@ -299,9 +351,9 @@ function Scenarios() {
           {SCENARIOS.map((scenario) => {
             const Icon = scenario.icon;
             return (
-              <li key={scenario.problem}>
-                <Link href={scenario.href} className="group flex h-full flex-col rounded-3xl border border-border bg-surface p-6 transition hover:border-primary/30 hover:shadow-md">
-                  <span className="grid size-11 place-items-center rounded-2xl bg-primary-soft text-primary-soft-fg">
+              <li key={scenario.problem} className="reveal">
+                <Link href={scenario.href} className="group flex h-full flex-col rounded-3xl border border-border bg-surface p-6 transition duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-md">
+                  <span className="grid size-11 place-items-center rounded-2xl bg-primary-soft text-primary-soft-fg transition duration-300 group-hover:bg-primary group-hover:text-primary-fg">
                     <Icon className="size-5" />
                   </span>
                   <h3 className="mt-4 font-display text-lg font-semibold">{scenario.problem}</h3>
@@ -338,14 +390,16 @@ async function FaqPreview() {
 
 function CtaBand() {
   return (
-    <section className="container-app mt-24">
+    <section className="container-app reveal mt-24">
       <div className="relative isolate overflow-hidden rounded-[2rem] bg-brand-gradient px-6 py-14 text-center text-white shadow-glow sm:px-12 sm:py-20">
         <div className="bg-grid absolute inset-0 -z-10 opacity-20" aria-hidden />
         <div className="grain absolute inset-0 -z-10" aria-hidden />
+        <span className="absolute -left-16 -top-16 -z-10 size-64 animate-aurora rounded-full bg-white/15 blur-3xl" aria-hidden />
+        <span className="absolute -bottom-20 -right-10 -z-10 size-72 animate-aurora-slow rounded-full bg-white/10 blur-3xl" aria-hidden />
         <h2 className="mx-auto max-w-3xl font-display text-h2 font-bold tracking-tight">Your whole campus, in your pocket</h2>
         <p className="mx-auto mt-4 max-w-2xl text-lg text-white/85">Create a free account with your email to register for events, save notes, follow departments and get alerts that matter to you.</p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <Button asChild size="lg" className="bg-white text-indigo-700 hover:bg-white/90">
+          <Button asChild size="lg" className="sheen bg-white text-indigo-700 hover:bg-white/90">
             <Link href="/signup">
               Create free account <ArrowRight />
             </Link>

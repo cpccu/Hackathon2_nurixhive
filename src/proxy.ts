@@ -6,14 +6,19 @@ import { SESSION_COOKIE, type SessionClaims, verifySession } from "@/lib/auth/se
  * Next.js 16 Proxy (formerly middleware). Deliberately light: it only verifies the
  * JWT signature/expiry and role claim for fast redirects. The authoritative check
  * (account active, tokenVersion current) runs in Route Handlers via requireAuth().
+ *
+ * It does NOT run for the public and auth pages (see `config.matcher`): those are prerendered and served
+ * straight from the CDN, so a visit never pays for a function start. Maintenance mode covers them with the
+ * `MaintenanceGate` overlay in the root layout; the proxy still blocks writes through the API.
  */
 
 const ADMIN_LOGIN_PATH = "/admin/login";
 const USER_LOGIN_PATH = "/login";
 const USER_AREA_PREFIXES = ["/dashboard", "/profile", "/settings", "/my", "/notifications"];
 
-/** Paths that stay reachable in maintenance mode (staff sign-in, health probes, crons, the flag itself). */
-const MAINTENANCE_ALLOWED = ["/admin", "/api/admin", "/api/auth", "/api/health", "/api/settings", "/api/cron", "/api/revalidate", "/maintenance"];
+/** API paths that stay reachable in maintenance mode (staff sign-in, health probes, crons, the flag itself). */
+const MAINTENANCE_ALLOWED = ["/api/admin", "/api/auth", "/api/health", "/api/settings", "/api/cron", "/api/revalidate"];
+const READ_ONLY_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const MAINTENANCE_TTL_MS = 10_000;
 
 let maintenanceCache: { value: boolean; expires: number } | null = null;
@@ -74,10 +79,11 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   const claims = await verifySession(token);
 
+  // Maintenance blocks API writes only. Reads stay open (they are public data) and skip the settings lookup,
+  // so a page view never costs a second function call.
   const exempt = MAINTENANCE_ALLOWED.some((prefix) => startsWithSegment(pathname, prefix));
-  if (!exempt && !(claims && isStaff(claims)) && (await isMaintenanceOn(request.nextUrl.origin))) {
-    if (startsWithSegment(pathname, "/api")) return jsonError(503, "MAINTENANCE", "CampusOS is under maintenance. Please try again shortly.");
-    return NextResponse.rewrite(new URL("/maintenance", request.url), { status: 503, headers: { "retry-after": "300" } });
+  if (startsWithSegment(pathname, "/api") && !READ_ONLY_METHODS.has(request.method) && !exempt && !(claims && isStaff(claims)) && (await isMaintenanceOn(request.nextUrl.origin))) {
+    return jsonError(503, "MAINTENANCE", "CampusOS is under maintenance. Please try again shortly.");
   }
 
   if (startsWithSegment(pathname, "/api/admin")) return handleAdminApi(claims);
@@ -89,6 +95,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  // Everything except static assets: needed so maintenance mode can cover the whole site.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|robots.txt|sitemap.xml|.*\\.(?:png|jpg|jpeg|svg|webp|avif|ico|woff2?|txt|json)$).*)"],
+  // Only what needs a check: the API, the staff console and the signed-in student area. Public and auth pages
+  // are static and never wake a function.
+  matcher: ["/api/:path*", "/admin/:path*", "/dashboard/:path*", "/profile/:path*", "/settings/:path*", "/my/:path*", "/notifications/:path*"],
 };

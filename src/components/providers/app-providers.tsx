@@ -1,16 +1,18 @@
 "use client";
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import { domAnimation, LazyMotion, MotionConfig } from "framer-motion";
+import { LazyMotion, MotionConfig } from "framer-motion";
 import { ThemeProvider } from "next-themes";
 import { type ReactNode, useState } from "react";
 import { Toaster } from "react-hot-toast";
 import { makeQueryClient } from "@/lib/query-client";
 import { AuthProvider } from "@/components/providers/auth-provider";
 
+const loadMotionFeatures = () => import("@/components/providers/motion-features").then((module) => module.default);
+
 /**
- * Client providers. LazyMotion + domAnimation keeps framer-motion's runtime
- * small (≈15 kB) - components use `m.*`, not `motion.*`. MotionConfig honours
+ * Client providers. LazyMotion loads domAnimation on demand (a separate chunk, not in the first
+ * payload) - components use `m.*`, not `motion.*`. MotionConfig honours
  * prefers-reduced-motion everywhere.
  */
 export function AppProviders({ children }: { children: ReactNode }) {
@@ -18,7 +20,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange storageKey="campusos-theme">
       <QueryClientProvider client={queryClient}>
-        <LazyMotion features={domAnimation} strict>
+        <LazyMotion features={loadMotionFeatures} strict>
           <MotionConfig reducedMotion="user">
             <AuthProvider>{children}</AuthProvider>
             <Toaster
