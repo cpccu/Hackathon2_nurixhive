@@ -1,8 +1,15 @@
 # CampusOS: City University
 
-One hub for campus life at City University (Bangladesh). Events and clubs, academic resources, notices, bus schedules, lost and found, complaints, and an "Ask CampusOS" assistant all live in one fast, mobile-first web app instead of being scattered across Facebook groups, Google Forms and notice boards.
+**One hub for campus life at City University, Bangladesh.** Events and clubs, academic resources, notices, bus schedules, lost and found, complaints, and an "Ask CampusOS" assistant live in one fast, mobile-first web app, instead of being scattered across Facebook groups, Google Forms and notice boards.
 
-> **Status:** the backend is complete (auth and security, uploads, Modules 1 to 4, notices, forms, bus schedule, search, notifications, admin analytics). The public site, auth pages and user portal are built. The admin console shell is in place; its module screens come next.
+Built by **Nurix Hive** for the CPCCU AI-Powered Web App Development & Deployment Hackathon 2026.
+
+| | |
+| --- | --- |
+| **Live app** | https://campusos-tawny.vercel.app |
+| **Demo accounts** | One per role (student, club admin, moderator, admin, super admin). The seed creates them from the `.env` values listed in [Seed and demo credentials](#seed-and-demo-credentials). The passwords are given to the judges in the submission form, not in this repository. |
+| **Demo video** | See `demovideoscript.md` for the walkthrough; the public Drive link is in the submission form. |
+| **Not built (on purpose)** | The optional AI bonus ideas. See [`pending.md`](pending.md). |
 
 ---
 
@@ -10,29 +17,39 @@ One hub for campus life at City University (Bangladesh). Events and clubs, acade
 
 1. [Overview](#overview)
 2. [Problem → solution scenarios](#problem--solution-scenarios)
-3. [Modules](#modules)
-4. [Tech stack](#tech-stack)
-5. [Architecture](#architecture)
-6. [Environment variables](#environment-variables)
-7. [Local setup](#local-setup)
-8. [Seed and demo credentials](#seed-and-demo-credentials)
-9. [Campus calendar and bus service rules](#campus-calendar-and-bus-service-rules)
-10. [API reference](#api-reference)
-11. [Caching tag map](#caching-tag-map)
-12. [Security](#security)
-13. [Deployment](#deployment)
-14. [Folder structure](#folder-structure)
-15. [Frontend architecture](#frontend-architecture)
-16. [User portal and public pages](#user-portal-and-public-pages)
-17. [Admin portal](#admin-portal)
-18. [Production hardening](#production-hardening)
-19. [Credits](#credits)
+3. [Real-world usability for a CU student](#real-world-usability-for-a-cu-student)
+4. [Modules](#modules)
+5. [Tech stack](#tech-stack)
+6. [Architecture](#architecture)
+7. [Environment variables](#environment-variables)
+8. [Local setup](#local-setup)
+9. [Seed and demo credentials](#seed-and-demo-credentials)
+10. [Campus calendar and bus service rules](#campus-calendar-and-bus-service-rules)
+11. [API reference](#api-reference)
+12. [Caching tag map](#caching-tag-map)
+13. [Security](#security)
+14. [Deployment](#deployment)
+15. [Folder structure](#folder-structure)
+16. [Frontend Architecture](#frontend-architecture)
+17. [User portal and public pages](#user-portal-and-public-pages)
+18. [Admin portal](#admin-portal)
+19. [Production hardening](#production-hardening)
+20. [Credits](#credits)
 
 ---
 
 ## Overview
 
 CampusOS is a single Next.js application. It serves the pages and the JSON API (`/api/*`) and stores its data in Neon PostgreSQL through Prisma. Public pages are served from a tag-invalidated cache, so they load instantly from the CDN and are refreshed only when an admin or user changes the underlying data.
+
+It implements **all four** modules of the problem statement (Club & Event Engine, Resource Hub, Smart Helpdesk, Lost & Found / Complaint Box), a role-based admin console, and a campus calendar that knows City University's real week: **open Friday to Tuesday, closed Wednesday and Thursday, no buses on Wednesday and Thursday**.
+
+**Try it in three minutes**
+
+1. Open the live app on your phone or laptop. The landing page shows the live next-bus widget and this week's events.
+2. Sign up with an email (a 6-digit code arrives by email), or sign in with the demo student.
+3. Register for an event and open the QR ticket. Ask the assistant *"Is the university open tomorrow?"*. Open `/bus` and pick **Wednesday** in the weekday selector.
+4. Sign in at `/admin/login` with an admin account to see the console: create an event on a Wednesday (it asks for confirmation), approve a resource, add a campus closure.
 
 ## Problem → solution scenarios
 
@@ -41,19 +58,35 @@ CampusOS is a single Next.js application. It serves the pages and the JSON API (
 | Event announcements get lost in Facebook groups, and registration happens through scattered Google Forms. | A single events feed with filters. One-click registration produces a QR ticket that is scanned at the door. |
 | Previous question papers and notes live in random Drive links. | A searchable, moderated resource library organized by department, course and semester, with bookmarks and full-text search. |
 | A class gets cancelled and half the section never sees the notice. | Categorized, pinnable notices targeted by department or course, plus in-app notifications. |
-| "When does the next bus leave for Dhanmondi?" | Route and trip timetables, also answered by the assistant. |
+| "When does the next bus leave for Dhanmondi?", and on Wednesday there is no bus at all. | Route and trip timetables that respect the campus week, also answered by the assistant. |
 | A lost ID card is posted once and buried. | A lost and found board with photos and claim requests that admins verify. |
 | Complaints disappear, or students fear retaliation. | Ticketed complaints (`CU-2026-000123`) with status tracking and an optional anonymous mode. |
 | The same questions about rules, exams and admission get asked over and over. | A knowledge-base chatbot that also logs unanswered questions so admins can fill the gaps. |
 | Club forms and deadlines are spread everywhere. | A central "Forms & deadlines" listing. |
 
+## Real-world usability for a CU student
+
+Nine situations a City University student meets in a normal week, and what CampusOS does in each. Each one is a path you can click through in the live app.
+
+| # | Situation | What the student does | Module and page |
+| --- | --- | --- | --- |
+| 1 | **Rahim, first-year, is afraid of missing the bus.** | Opens `/` on his phone. The ticker shows an urgent notice, the next-bus widget says *R2 to campus in 12 min*, and the 360 px layout needs no zooming. | Landing, `/bus` |
+| 2 | **Tisha plans her Wednesday.** She wonders if the bus runs. | Opens `/bus`. On Wednesday the page says *No bus service today: Wednesday is a weekly off day* and shows the next service on Friday. She can ask the assistant too: *"Is the university open tomorrow?"* | Campus calendar, `/bus`, assistant |
+| 3 | **Nusrat wants old DBMS questions before the midterm.** | Types `dbms prev` in `/resources`. Synonym expansion and typo tolerance find *Database Management Systems - Previous Questions*. She bookmarks it and downloads the PDF in two taps. | Resource Hub |
+| 4 | **Sabbir has notes for an elective that is not in the course list.** | In `/dashboard/resources/upload` he taps *My course is not listed*, types the course name, and submits. A moderator approves it. | Resource Hub, moderation |
+| 5 | **A club member registers for a workshop.** | On the event page a countdown and a seats bar show urgency. *Register now* gives a QR ticket at once, plus a calendar link. At the door, the admin scans it. | Club & Event Engine |
+| 6 | **A club admin plans an event.** | Picks a Wednesday by mistake. The form warns that the campus is closed and will not submit until the admin confirms. | Event admin, campus calendar |
+| 7 | **Lost ID card.** Tanvir posts a *Found* item with two photos. | The system suggests the matching *Lost* post. The owner claims it, Tanvir approves, and only then does the owner see his contact details. The status updates on screen without a reload. | Lost & Found |
+| 8 | **Sensitive complaint.** | A student files a harassment complaint with *Hide my identity from staff* on. She gets ticket `CU-2026-000123` and tracks its timeline without ever being named to staff. | Complaint Box |
+| 9 | **Night-before panic.** | Someone asks the assistant in Banglish, *"exam er seat plan kothay?"*. If the knowledge base cannot answer with confidence, the assistant says so and logs the question for admins. | Smart Helpdesk |
+
 ## Modules
 
-1. **Events & Clubs:** clubs, memberships, club admins, events, registrations with QR check-in, and a central form-link listing.
-2. **Academic Resources:** notes, question papers and lab manuals uploaded as PDFs. Uploads go through moderation and support full-text and fuzzy search plus bookmarks.
-3. **Campus Info & Assistant:** notices, bus routes and trips, and a knowledge base with a retrieval-first chatbot.
-4. **Lost & Found + Complaints:** item board with claims, and ticketed complaints with an update timeline.
-5. **Platform:** auth with email OTP, roles, notifications, audit log, DB-backed rate limiting and upload tracking.
+1. **Events & Clubs:** clubs, memberships, club admins, events, registrations with QR check-in, calendar export, and a central form-link listing. Pages: `/events`, `/clubs`, `/forms`, `/dashboard/registrations`.
+2. **Academic Resources:** notes, question papers and lab manuals uploaded as PDFs. Uploads go through moderation and support full-text and fuzzy search plus bookmarks. Pages: `/resources`, `/dashboard/resources/upload`.
+3. **Campus Info & Assistant:** notices, bus routes and trips, the campus calendar, and a knowledge base with a retrieval-first chatbot. Pages: `/notices`, `/bus`, `/helpdesk`.
+4. **Lost & Found + Complaints:** item board with claims, and ticketed complaints with an update timeline. Pages: `/lost-found`, `/complaints/new`, `/complaints/track`.
+5. **Platform:** auth with email OTP, roles, notifications, audit log, DB-backed rate limiting and upload tracking. Admin console at `/admin`.
 
 ## Tech stack
 
@@ -1865,12 +1898,15 @@ See **[Deployment checklist](#deployment-checklist-vercel--neon)** under Product
 ```
 prisma/
   schema.prisma                 # full data model
-  migrations/                   # init, raw-SQL full-text search, event bookmarks + sample flag
+  migrations/                   # 8 migrations: init, full-text search, trigram indexes, course name, campus calendar…
   seed.ts / seed-content.ts     # accounts + reference data / demo events, courses, resources
 prisma.config.ts                # Prisma 7 CLI config (DIRECT_URL, migrations, seed)
-scripts/cleanup-orphan-uploads.ts, scripts/send-reminders.ts
+scripts/cleanup-orphan-uploads.ts, scripts/send-reminders.ts, scripts/explain-queries.ts
+scripts/verify-db-doc.ts        # checks databasedesign.md against schema.prisma
+scripts/verify-readme.ts        # checks this README against the routes, .env.example and package.json
 vercel.json                     # daily reminder cron
-docs/ARCHITECTURE.md, docs/TESTING.md
+docs/ARCHITECTURE.md, docs/TESTING.md, docs/QA_REPORT.md, docs/REQUIREMENTS_AUDIT.md, docs/SUBMISSION_CHECKLIST.md
+databasedesign.md, pending.md, demovideoscript.md, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md
 playwright.config.ts            # e2e on port 3100 with the test-only mail hook
 src/
   app/
@@ -1978,12 +2014,7 @@ Every mutation shows a toast (`toastPromise` wraps `toast.promise`). Uploads: im
 
 ### Real-world usability
 
-1. **Rahim, first-year, missed the bus notice.** He opens `/` on his phone. The ticker shows an urgent notice, the next-bus widget says *R2 to campus in 12 min*, and the 360 px layout needs no zooming.
-2. **Nusrat wants old DBMS questions before the midterm.** She types `dbms prev` in `/resources`. Synonym expansion and typo tolerance find *Database Management Systems - Previous Questions*. She bookmarks it and downloads the PDF in two taps.
-3. **A club member registers for a workshop.** On the event page, a countdown and a seats bar show urgency. One tap on *Register now* gives a QR ticket right away (optimistic), plus a calendar download. At the door, the admin scans it.
-4. **Lost ID card.** Tanvir posts a *Found* item with two photos. The system suggests the matching *Lost* post. The owner claims it with proof, Tanvir approves, and only then does the owner see his contact details.
-5. **Sensitive complaint.** A student files a harassment complaint with *Hide my identity* on. She gets ticket `CU-2026-000123` and tracks its timeline without ever being named to staff.
-6. **Night-before panic.** Someone asks the assistant in Banglish, *"exam er seat plan kothay?"*. If the knowledge base cannot answer confidently, the assistant says so and the question is logged for admins.
+The nine student scenarios are listed near the top of this file: [Real-world usability for a CU student](#real-world-usability-for-a-cu-student).
 
 ### Quality checks
 
@@ -2119,9 +2150,18 @@ Production build (`next start`), Chromium on the same machine as the server, war
 8. **UploadThing:** the public URL must be reachable at `/api/uploadthing` for the upload callback.
 9. **After go-live:** rotate the Neon password, Brevo key, UploadThing token, JWT secret and every seed password; confirm `npm run audit:prod` is clean in CI.
 
-### Testing
+### Testing and documentation checks
 
-`docs/TESTING.md` lists the unit and end-to-end suites; `docs/QA_REPORT.md` lists everything tested in this pass with results and known limitations.
+`docs/TESTING.md` lists the unit and end-to-end suites; `docs/QA_REPORT.md` lists everything tested with results and known limitations.
+
+```bash
+npm test                    # Vitest unit tests
+npm run test:e2e            # Playwright (starts its own dev server on port 3100)
+npm run docs:verify-db      # databasedesign.md matches prisma/schema.prisma
+npm run docs:verify-readme  # every route, env variable and npm script in this README is real
+```
+
+Other documents: [`databasedesign.md`](databasedesign.md) (schema), [`docs/REQUIREMENTS_AUDIT.md`](docs/REQUIREMENTS_AUDIT.md) (hackathon requirements vs. code), [`docs/SUBMISSION_CHECKLIST.md`](docs/SUBMISSION_CHECKLIST.md) (manual steps), [`pending.md`](pending.md) (not built, in Bangla), [`demovideoscript.md`](demovideoscript.md) (demo script, in Bangla), [`SECURITY.md`](SECURITY.md), [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Credits
 

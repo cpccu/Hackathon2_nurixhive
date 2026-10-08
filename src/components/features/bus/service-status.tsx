@@ -1,6 +1,6 @@
 "use client";
 
-import { m } from "framer-motion";
+import { m, useReducedMotion } from "framer-motion";
 import { BusFront, MoonStar } from "lucide-react";
 import { CAMPUS_WEEK_ORDER, type Weekday, isOffWeekday, weekdayName, weekdayShort } from "@/config/campus-calendar";
 import { cn } from "@/lib/utils";
@@ -10,11 +10,12 @@ import { cn } from "@/lib/utils";
  * server-side calendar rule (`busServiceStatus`) or is built from the same helpers on the client.
  */
 export function NoServiceCard({ message, compact = false, className }: { message: string; compact?: boolean; className?: string }) {
+  const reduced = useReducedMotion();
   return (
     <m.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={reduced ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
+      transition={{ duration: reduced ? 0 : 0.3 }}
       role="status"
       className={cn("flex items-center gap-4 rounded-2xl border border-warning/40 bg-warning-soft/60 p-4 text-fg sm:gap-5 sm:p-5", compact && "gap-3 p-3 sm:gap-3 sm:p-3", className)}
     >

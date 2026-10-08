@@ -2,6 +2,7 @@ import { CalendarClock, MapPin } from "lucide-react";
 import type { Metadata } from "next";
 import Image from "next/image";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { ItemPanel } from "@/components/features/lost-found/item-panel";
 import { LostFoundCard } from "@/components/features/lost-found/lost-found-card";
@@ -109,6 +110,8 @@ async function ItemDetail({ params }: Props) {
 }
 
 async function Matches({ id, lost }: { id: string; lost: boolean }) {
+  // The cards print "Posted 2 hours ago", which needs the request time; keep that out of the prerendered shell.
+  await connection();
   const matches = await getLostFoundMatches(id);
   if (matches.length === 0) return null;
   return (

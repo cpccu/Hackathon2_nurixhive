@@ -34,6 +34,8 @@ async function makeEvent(api: APIRequestContext, over: Partial<EventPayload> = {
       capacity: over.capacity === undefined ? null : over.capacity,
       registrationDeadline: null,
       publish: over.publish ?? true,
+      // These tests are about registration and check-in, not the calendar: the event may land on a Wednesday or Thursday.
+      confirmOffDay: true,
     },
   });
   expect(response.status(), await response.text()).toBe(201);

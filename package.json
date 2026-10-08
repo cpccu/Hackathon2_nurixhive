@@ -21,7 +21,9 @@
     "analyze": "next analyze",
     "test:e2e": "playwright test",
     "db:explain": "tsx scripts/explain-queries.ts",
-    "audit:prod": "npm audit --omit=dev"
+    "audit:prod": "npm audit --omit=dev",
+    "docs:verify-db": "tsx scripts/verify-db-doc.ts",
+    "docs:verify-readme": "tsx scripts/verify-readme.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.131.0",
