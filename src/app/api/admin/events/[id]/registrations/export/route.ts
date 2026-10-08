@@ -6,6 +6,9 @@ import { requirePermission } from "@/server/middleware/auth";
 import { audit } from "@/server/services/audit.service";
 import { exportRegistrationsCsv } from "@/server/services/registration.service";
 
+/** Vercel function time budget (seconds). */
+export const maxDuration = 60;
+
 /** Streams all registrations as CSV (UTF-8 with BOM for Excel). */
 export const GET = withApiHandler(async (request: NextRequest, context: RouteContext<"/api/admin/events/[id]/registrations/export">) => {
   const actor = await requirePermission(request, Permission.EventsManage);

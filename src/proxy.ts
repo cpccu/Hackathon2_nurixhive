@@ -12,11 +12,37 @@ const ADMIN_LOGIN_PATH = "/admin/login";
 const USER_LOGIN_PATH = "/login";
 const USER_AREA_PREFIXES = ["/dashboard", "/profile", "/settings", "/my", "/notifications"];
 
+/** Paths that stay reachable in maintenance mode (staff sign-in, health probes, crons, the flag itself). */
+const MAINTENANCE_ALLOWED = ["/admin", "/api/admin", "/api/auth", "/api/health", "/api/settings", "/api/cron", "/api/revalidate", "/maintenance"];
+const MAINTENANCE_TTL_MS = 10_000;
+
+let maintenanceCache: { value: boolean; expires: number } | null = null;
+
+/**
+ * Reads the maintenance flag through the cached public settings endpoint and keeps
+ * it for a few seconds per instance, so a page view never costs a database round trip.
+ * Fails open: if the flag cannot be read the site stays up.
+ */
+async function isMaintenanceOn(origin: string): Promise<boolean> {
+  const now = Date.now();
+  if (maintenanceCache && maintenanceCache.expires > now) return maintenanceCache.value;
+  let value = false;
+  try {
+    const response = await fetch(`${origin}/api/settings/public`, { cache: "no-store", signal: AbortSignal.timeout(2_000) });
+    const body = (await response.json()) as { data?: { maintenanceMode?: boolean } };
+    value = body.data?.maintenanceMode === true;
+  } catch {
+    value = false;
+  }
+  maintenanceCache = { value, expires: now + MAINTENANCE_TTL_MS };
+  return value;
+}
+
 function startsWithSegment(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
 
-function jsonError(status: 401 | 403, code: string, message: string): NextResponse {
+function jsonError(status: 401 | 403 | 503, code: string, message: string): NextResponse {
   return NextResponse.json({ success: false, error: { code, message } }, { status });
 }
 
@@ -48,6 +74,12 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   const claims = await verifySession(token);
 
+  const exempt = MAINTENANCE_ALLOWED.some((prefix) => startsWithSegment(pathname, prefix));
+  if (!exempt && !(claims && isStaff(claims)) && (await isMaintenanceOn(request.nextUrl.origin))) {
+    if (startsWithSegment(pathname, "/api")) return jsonError(503, "MAINTENANCE", "CampusOS is under maintenance. Please try again shortly.");
+    return NextResponse.rewrite(new URL("/maintenance", request.url), { status: 503, headers: { "retry-after": "300" } });
+  }
+
   if (startsWithSegment(pathname, "/api/admin")) return handleAdminApi(claims);
   if (startsWithSegment(pathname, "/admin")) return handleAdminPage(request, claims, Boolean(token));
   if (USER_AREA_PREFIXES.some((prefix) => startsWithSegment(pathname, prefix)) && !claims) {
@@ -57,13 +89,6 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  matcher: [
-    "/admin/:path*",
-    "/api/admin/:path*",
-    "/dashboard/:path*",
-    "/profile/:path*",
-    "/settings/:path*",
-    "/my/:path*",
-    "/notifications/:path*",
-  ],
+  // Everything except static assets: needed so maintenance mode can cover the whole site.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|robots.txt|sitemap.xml|.*\\.(?:png|jpg|jpeg|svg|webp|avif|ico|woff2?|txt|json)$).*)"],
 };

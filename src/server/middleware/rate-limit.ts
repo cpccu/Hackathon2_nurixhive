@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { RateLimitError } from "@/lib/errors";
+import { mailCaptureEnabled } from "@/server/services/mail-capture";
 import { getClientIp } from "@/server/security/ip";
 import {
   consume,
@@ -13,8 +14,8 @@ const MINUTE = 60 * 1000;
 
 /** Rate-limit tiers. */
 export const RATE_LIMITS = {
-  /** Auth endpoints (login, signup, OTP, reset) per IP. */
-  authStrict: { limit: 10, windowMs: 15 * MINUTE },
+  /** Auth endpoints (login, signup, OTP, reset) per IP. Relaxed only under the test-only E2E flag (never in production). */
+  authStrict: { limit: mailCaptureEnabled ? 500 : 10, windowMs: 15 * MINUTE },
   /** Per-email cap on OTP emails (resend / forgot-password). */
   otpPerEmail: { limit: 5, windowMs: 60 * MINUTE },
   /** Authenticated write endpoints per IP. */

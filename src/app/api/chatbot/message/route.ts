@@ -7,6 +7,9 @@ import { parseJsonBody } from "@/server/middleware/request-guards";
 import { handleChatMessage } from "@/server/services/chatbot.service";
 import { chatMessageSchema } from "@/server/validators/helpdesk.validators";
 
+/** Vercel function time budget (seconds). */
+export const maxDuration = 30;
+
 /** Ask the campus assistant. Works signed in or anonymously (anonymous = stricter limit). */
 export const POST = withApiHandler(async (request: NextRequest) => {
   const user = await getAuthUser(request);

@@ -1,4 +1,19 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "crons": [{ "path": "/api/cron/reminders", "schedule": "0 12 * * *" }]
+  "framework": "nextjs",
+  "regions": [
+    "iad1"
+  ],
+  "installCommand": "npm ci",
+  "buildCommand": "node scripts/migrate-deploy.mjs && npm run build",
+  "crons": [
+    {
+      "path": "/api/cron/reminders",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/maintenance",
+      "schedule": "30 21 * * *"
+    }
+  ]
 }

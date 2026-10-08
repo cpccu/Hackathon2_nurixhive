@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { type APIRequestContext, type Page, test as base, expect } from "@playwright/test";
+import { type APIRequestContext, type Page, type PlaywrightWorkerArgs, test as base, expect } from "@playwright/test";
 
 export const BASE_URL = "http://localhost:3100";
 const MAIL_FILE = path.join(process.cwd(), ".e2e", "mail.jsonl");
@@ -83,6 +83,50 @@ export const test = base.extend<{ authedPage: Page }, { session: { account: Acco
     await provide(page);
     await context.close();
   },
+});
+
+export type StaffSlot = 1 | 2 | 3 | 4;
+export const STAFF_ROLE: Record<StaffSlot, string> = { 1: "SUPER_ADMIN", 2: "ADMIN", 3: "CLUB_ADMIN", 4: "MODERATOR" };
+
+/** Signs a seeded staff account in through the admin login API (credentials come from .env, never printed). */
+async function staffLogin(playwright: PlaywrightWorkerArgs["playwright"], slot: StaffSlot): Promise<StorageState> {
+  const email = process.env[`ADMIN${slot}_EMAIL`];
+  const password = process.env[`ADMIN${slot}_PASSWORD`];
+  if (!email || !password) throw new Error(`ADMIN${slot}_EMAIL/PASSWORD are not set in .env.`);
+  const request = await playwright.request.newContext({ baseURL: BASE_URL });
+  const response = await request.post("/api/auth/admin/login", { headers: ORIGIN_HEADER, data: { email, password, website: "" } });
+  expect(response.ok(), `staff ${slot} login`).toBeTruthy();
+  const state = await request.storageState();
+  await request.dispose();
+  return state;
+}
+
+/** API client carrying a stored session (cookie jar) and the Origin header mutations require. */
+export async function apiFrom(playwright: PlaywrightWorkerArgs["playwright"], state: StorageState): Promise<APIRequestContext> {
+  return playwright.request.newContext({ baseURL: BASE_URL, storageState: state, extraHTTPHeaders: ORIGIN_HEADER });
+}
+
+/** A fresh verified student (own session), used for multi-user scenarios (races, IDOR, deactivation). */
+export async function createStudent(playwright: PlaywrightWorkerArgs["playwright"], label: string): Promise<{ account: Account; state: StorageState }> {
+  const request = await playwright.request.newContext({ baseURL: BASE_URL });
+  const account = uniqueAccount(label);
+  await registerViaApi(request, account);
+  const login = await request.post("/api/auth/login", { headers: ORIGIN_HEADER, data: { email: account.email, password: account.password, website: "" } });
+  expect(login.ok(), await login.text()).toBeTruthy();
+  const state = await request.storageState();
+  await request.dispose();
+  return { account, state };
+}
+
+export const staffTest = test.extend<object, { staff: Record<StaffSlot, StorageState> }>({
+  staff: [
+    async ({ playwright }, provide) => {
+      const states = {} as Record<StaffSlot, StorageState>;
+      for (const slot of [1, 2, 3, 4] as const) states[slot] = await staffLogin(playwright, slot);
+      await provide(states);
+    },
+    { scope: "worker" },
+  ],
 });
 
 export { expect };

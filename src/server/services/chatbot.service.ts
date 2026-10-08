@@ -16,6 +16,7 @@ import { normalizeMessage } from "@/server/chatbot/normalize";
 import type { AuthUser } from "@/server/middleware/auth";
 import { retrieveKnowledge } from "@/server/queries/helpdesk.queries";
 import { answerIntent } from "@/server/services/chatbot-intents.service";
+import { audit } from "@/server/services/audit.service";
 import { getLlmProvider } from "@/server/services/llm.service";
 
 const SESSION_TOKEN_LENGTH = 32;
@@ -218,6 +219,7 @@ export async function listKnowledgeGaps(type: "unanswered" | "unhelpful", query:
     where: { role: "USER", sessionId: { in: [...new Set(answers.map((a) => a.sessionId))] } },
     select: { sessionId: true, content: true, createdAt: true },
     orderBy: { createdAt: "desc" },
+    take: 500,
   });
   const items = answers.map((answer) => ({
     id: answer.id,
@@ -227,4 +229,50 @@ export async function listKnowledgeGaps(type: "unanswered" | "unhelpful", query:
     createdAt: answer.createdAt,
   }));
   return toPage(items, query.limit, (row) => row.id);
+}
+
+export interface ChatbotAnalytics {
+  totals: { questions: number; answered: number; unanswered: number; helpful: number; notHelpful: number };
+  /** Assistant answers bucketed by retrieval confidence (0-20%, ..., 80-100%). */
+  confidence: Array<{ bucket: string; count: number }>;
+  topIntents: Array<{ intent: string; count: number }>;
+}
+
+/** Aggregates over the last 30 days; index-friendly (createdAt / feedback / isAnswered). */
+export async function getChatbotAnalytics(): Promise<ChatbotAnalytics> {
+  const since = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+  const [questions, unanswered, helpful, notHelpful, buckets, intents] = await Promise.all([
+    prisma.chatMessage.count({ where: { role: "USER", createdAt: { gte: since } } }),
+    prisma.chatMessage.count({ where: { role: "USER", isAnswered: false, createdAt: { gte: since } } }),
+    prisma.chatMessage.count({ where: { role: "ASSISTANT", feedback: "HELPFUL", createdAt: { gte: since } } }),
+    prisma.chatMessage.count({ where: { role: "ASSISTANT", feedback: "NOT_HELPFUL", createdAt: { gte: since } } }),
+    prisma.$queryRaw<Array<{ bucket: number; count: number }>>`
+      SELECT LEAST(floor("confidence" * 5), 4)::int AS bucket, count(*)::int AS count
+      FROM "ChatMessage" WHERE "role" = 'ASSISTANT' AND "confidence" IS NOT NULL AND "createdAt" >= ${since}
+      GROUP BY 1 ORDER BY 1`,
+    prisma.chatMessage.groupBy({
+      by: ["intent"],
+      where: { role: "ASSISTANT", intent: { not: null }, createdAt: { gte: since } },
+      _count: { _all: true },
+      orderBy: { _count: { intent: "desc" } },
+      take: 6,
+    }),
+  ]);
+  const labels = ["0-20%", "20-40%", "40-60%", "60-80%", "80-100%"];
+  return {
+    totals: { questions, answered: questions - unanswered, unanswered, helpful, notHelpful },
+    confidence: labels.map((bucket, index) => ({ bucket, count: buckets.find((row) => row.bucket === index)?.count ?? 0 })),
+    topIntents: intents.flatMap((row) => (row.intent ? [{ intent: row.intent, count: row._count._all }] : [])),
+  };
+}
+
+/**
+ * Marks an unanswered question as handled (e.g. after a KB entry was written for it) so it
+ * leaves the inbox. Idempotent: resolving twice is a no-op.
+ */
+export async function resolveKnowledgeGap(actor: AuthUser, messageId: string, request: Request): Promise<void> {
+  const message = await prisma.chatMessage.findFirst({ where: { id: messageId, role: "USER" }, select: { id: true } });
+  if (!message) throw new NotFoundError("Question not found.");
+  await prisma.chatMessage.updateMany({ where: { id: messageId, isAnswered: false }, data: { isAnswered: true } });
+  await audit(actor, "chatbot.gap_resolve", { type: "ChatMessage", id: messageId }, undefined, request);
 }

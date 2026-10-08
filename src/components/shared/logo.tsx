@@ -10,8 +10,8 @@ export function LogoMark({ className }: { className?: string }) {
     <svg viewBox="0 0 40 40" className={cn("size-9", className)} aria-hidden>
       <defs>
         <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="var(--primary)" />
-          <stop offset="1" stopColor="var(--accent)" />
+          <stop offset="0" stopColor="#4f46e5" />
+          <stop offset="1" stopColor="#059669" />
         </linearGradient>
       </defs>
       <rect width="40" height="40" rx="12" fill={`url(#${gradientId})`} />
@@ -23,23 +23,23 @@ export function LogoMark({ className }: { className?: string }) {
 }
 
 /** Logo lock-up; links home unless `href={null}`. */
-export function Logo({ className, href = "/", compact, inverted }: { className?: string; href?: string | null; compact?: boolean; inverted?: boolean }) {
+export function Logo({ className, href = "/", compact, inverted, tagline }: { className?: string; href?: string | null; compact?: boolean; inverted?: boolean; tagline?: boolean }) {
   const content = (
     <span className={cn("inline-flex items-center gap-2.5", className)}>
       <LogoMark />
       {!compact && (
-        <span className="flex flex-col leading-none">
+        <span className="flex flex-col leading-none whitespace-nowrap">
           <span className={cn("font-display text-lg font-bold tracking-tight", inverted && "text-white")}>
             Campus<span className={inverted ? "text-white/80" : "text-gradient"}>OS</span>
           </span>
-          <span className={cn("mt-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.18em]", inverted ? "text-white/70" : "text-fg-subtle")}>City University</span>
+          {tagline && <span className={cn("mt-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.18em]", inverted ? "text-white/70" : "text-fg-subtle")}>City University</span>}
         </span>
       )}
     </span>
   );
   if (href === null) return content;
   return (
-    <Link href={href} className="rounded-xl" aria-label="CampusOS home">
+    <Link href={href} className="shrink-0 rounded-xl" aria-label="CampusOS home">
       {content}
     </Link>
   );

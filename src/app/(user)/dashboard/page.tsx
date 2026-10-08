@@ -7,3 +7,6 @@ export const metadata: Metadata = buildMetadata({ title: "Dashboard", descriptio
 export default function DashboardPage() {
   return <DashboardOverview />;
 }
+
+/** Signed-in screen rendered after the session loads: exempt from instant-navigation validation. */
+export const instant = false;

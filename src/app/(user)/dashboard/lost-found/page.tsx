@@ -13,3 +13,6 @@ export default function MyLostFoundPage() {
     </div>
   );
 }
+
+/** Signed-in screen rendered after the session loads: exempt from instant-navigation validation. */
+export const instant = false;

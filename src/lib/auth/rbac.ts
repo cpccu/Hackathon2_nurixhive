@@ -31,6 +31,7 @@ export const Permission = {
   AuditView: "audit:view",
   ChatAnalyticsView: "chat:analytics",
   AcademicsManage: "academics:manage",
+  SettingsManage: "settings:manage",
 } as const;
 
 export type Permission = (typeof Permission)[keyof typeof Permission];
@@ -44,7 +45,7 @@ const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     Permission.ResourcesModerate,
     Permission.LostFoundModerate,
     Permission.ComplaintsManage,
-    Permission.EventsCheckIn,
+    Permission.ChatAnalyticsView,
   ]),
   [Role.CLUB_ADMIN]: new Set([
     Permission.AdminAccess,

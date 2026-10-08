@@ -34,8 +34,7 @@ export function SiteHeader() {
       className={cn("sticky top-0 border-b transition-[background-color,border-color,box-shadow] duration-300", scrolled ? "glass border-glass-border shadow-sm" : "border-transparent bg-transparent")}
     >
       <div className="container-app flex h-16 items-center gap-4 lg:h-[4.25rem]">
-        <Logo compact className="shrink-0 sm:hidden" />
-        <Logo className="hidden shrink-0 sm:inline-flex" />
+        <Logo className="shrink-0" />
         <nav aria-label="Main" className="ml-4 hidden flex-1 xl:block">
           <ul className="flex items-center gap-0.5">
             {PUBLIC_NAV.map((item) => {
@@ -45,7 +44,7 @@ export function SiteHeader() {
                   <Link
                     href={item.href}
                     aria-current={active ? "page" : undefined}
-                    className={cn("relative block rounded-xl px-3 py-2 text-sm font-medium transition-colors", active ? "text-primary" : "text-fg-muted hover:text-fg")}
+                    className={cn("relative block whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium transition-colors", active ? "text-primary" : "text-fg-muted hover:text-fg")}
                   >
                     {active && <m.span layoutId="nav-pill" className="absolute inset-0 -z-10 rounded-xl bg-primary-soft" transition={{ type: "spring", stiffness: 420, damping: 34 }} />}
                     {item.label}
@@ -56,8 +55,8 @@ export function SiteHeader() {
           </ul>
         </nav>
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-          <SearchTrigger className="hidden w-56 md:flex 2xl:w-72" />
-          <SearchTrigger compact className="md:hidden" />
+          <SearchTrigger className="hidden w-44 2xl:flex" />
+          <SearchTrigger compact className="2xl:hidden" />
           <ThemeToggle className="hidden sm:grid" />
           <UserMenu />
           <button

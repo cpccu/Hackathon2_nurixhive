@@ -8,6 +8,9 @@ import { parseJsonBody } from "@/server/middleware/request-guards";
 import { importEntries } from "@/server/services/knowledge.service";
 import { importEntriesSchema } from "@/server/validators/helpdesk.validators";
 
+/** Vercel function time budget (seconds). */
+export const maxDuration = 30;
+
 /** Bulk JSON import - up to 500 entries per request (body limit 1 MB). */
 const IMPORT_MAX_BYTES = 1024 * 1024;
 

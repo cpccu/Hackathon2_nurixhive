@@ -1,5 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 
+try {
+  process.loadEnvFile(".env");
+} catch {
+  // Variables provided by the environment (CI).
+}
+
 const PORT = 3100;
 
 /**

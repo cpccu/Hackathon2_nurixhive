@@ -274,3 +274,25 @@ export async function deleteResource(actor: AuthUser, resourceId: string, reques
   await audit(actor, "resource.delete", { type: "Resource", id: resourceId }, { title: resource.title }, request);
   revalidateResources(resourceId, resource);
 }
+
+export interface BulkReviewResult {
+  succeeded: string[];
+  failed: Array<{ id: string; message: string }>;
+}
+
+/**
+ * Applies one decision to many resources. Each item is processed on its own so one
+ * stale or missing row never blocks the rest (and each gets its own audit entry).
+ */
+export async function bulkReviewResources(actor: AuthUser, ids: string[], input: ReviewResourceInput, request: Request): Promise<BulkReviewResult> {
+  const result: BulkReviewResult = { succeeded: [], failed: [] };
+  for (const id of ids) {
+    try {
+      await reviewResource(actor, id, input, request);
+      result.succeeded.push(id);
+    } catch (error) {
+      result.failed.push({ id, message: error instanceof Error ? error.message : "Could not review this resource." });
+    }
+  }
+  return result;
+}

@@ -5,6 +5,9 @@ import { UnauthorizedError, withApiHandler } from "@/lib/errors";
 import { bearerToken, secretsMatch } from "@/server/security/secret";
 import { sendEventReminders } from "@/server/services/platform.service";
 
+/** Vercel function time budget (seconds). */
+export const maxDuration = 60;
+
 /**
  * Daily "events starting tomorrow" reminders. Vercel Cron calls this with
  * `Authorization: Bearer <CRON_SECRET>`. Idempotent - safe to call repeatedly.

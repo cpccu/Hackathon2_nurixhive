@@ -117,6 +117,7 @@ export async function listClaims(user: AuthUser, itemId: string) {
     where: { itemId },
     select: { id: true, message: true, status: true, createdAt: true, reviewedAt: true, claimer: { select: { id: true, name: true, studentId: true } } },
     orderBy: { createdAt: "asc" },
+    take: 200,
   });
 }
 

@@ -42,6 +42,9 @@ export const CacheTags = {
 
   // Aggregates shown on landing page / dashboards
   stats: "stats",
+
+  // Site banner / maintenance switch
+  settings: "settings",
 } as const;
 
 /**
@@ -133,3 +136,6 @@ export const revalidateLostFound = (id?: string) =>
   revalidateTags(CacheTags.lostFound, CacheTags.stats, id && CacheTags.lostFoundItem(id));
 
 export const revalidateStats = () => revalidateTags(CacheTags.stats);
+
+/** Banner / maintenance changes affect every public layout. */
+export const revalidateSettings = () => revalidateTags(CacheTags.settings);

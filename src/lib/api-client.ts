@@ -138,31 +138,3 @@ export const api = {
   patch: <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>("PATCH", path, { ...options, body }).then((r) => r.data),
   delete: <T>(path: string, options?: RequestOptions) => request<T>("DELETE", path, options).then((r) => r.data),
 };
-
-/**
- * Compatibility wrapper used by the admin console drafts:
- * `apiClient.get(url, { showToastOnError })` etc. Errors are re-thrown; when
- * `showToastOnError` is true (default) a toast is shown first.
- */
-interface CompatOptions {
-  showToastOnError?: boolean;
-}
-
-async function withToast<T>(promise: Promise<T>, options?: CompatOptions): Promise<T> {
-  try {
-    return await promise;
-  } catch (error) {
-    if (options?.showToastOnError !== false) {
-      const { toast } = await import("react-hot-toast");
-      toast.error(errorMessage(error));
-    }
-    throw error;
-  }
-}
-
-export const apiClient = {
-  get: <T>(path: string, options?: CompatOptions) => withToast(api.get<T>(path), options),
-  post: <T>(path: string, body?: unknown, options?: CompatOptions) => withToast(api.post<T>(path, body), options),
-  patch: <T>(path: string, body?: unknown, options?: CompatOptions) => withToast(api.patch<T>(path, body), options),
-  delete: <T>(path: string, options?: CompatOptions) => withToast(api.delete<T>(path), options),
-};

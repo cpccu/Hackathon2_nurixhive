@@ -8,6 +8,9 @@ import { assertSameOrigin } from "@/server/middleware/request-guards";
 import { uploadImage } from "@/server/services/upload.service";
 import { IMAGE_PURPOSES, MAX_IMAGE_INPUT_BYTES } from "@/server/upload/image-pipeline";
 
+/** Vercel function time budget (seconds). */
+export const maxDuration = 60;
+
 // Runs on the Node.js runtime (Next 16 default; `export const runtime` is disallowed with Cache Components).
 
 /** Room for multipart boundaries and the purpose field on top of the 4 MB image. */

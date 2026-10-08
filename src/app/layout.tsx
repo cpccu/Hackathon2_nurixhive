@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Hind_Siliguri, Plus_Jakarta_Sans } from "next/font/google";
 import type { ReactNode } from "react";
 import { AppProviders } from "@/components/providers/app-providers";
-import { ChatbotLauncher } from "@/components/shared/chatbot/chatbot-launcher";
 import { CommandPaletteHost } from "@/components/shared/command-palette-trigger";
 import { JsonLd } from "@/components/shared/json-ld";
 import { organizationJsonLd, rootMetadata, websiteJsonLd } from "@/config/seo";
@@ -38,7 +37,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <AppProviders>
           {children}
           <CommandPaletteHost />
-          <ChatbotLauncher />
         </AppProviders>
         <JsonLd data={[organizationJsonLd(), websiteJsonLd()]} />
       </body>

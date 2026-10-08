@@ -103,7 +103,8 @@ export async function getAdminStats(nowBucket: string) {
       prisma.chatMessage.count({ where: { role: "ASSISTANT", feedback: "NOT_HELPFUL" } }),
     ]);
 
-  const [signupsPerDay, registrationsPerWeek, resolution, topEvents, topSearchTerms] = await Promise.all([
+  const [complaintStatus, signupsPerDay, registrationsPerWeek, resolution, topEvents, topSearchTerms] = await Promise.all([
+    prisma.complaint.groupBy({ by: ["status"], _count: { _all: true } }),
     prisma.$queryRaw<DailyCount[]>`
       SELECT to_char(date_trunc('day', "createdAt" + interval '6 hours'), 'YYYY-MM-DD') AS day, count(*)::int AS count
       FROM "User" WHERE "createdAt" >= ${since30d} GROUP BY 1 ORDER BY 1`,
@@ -141,6 +142,7 @@ export async function getAdminStats(nowBucket: string) {
       chatbotUnhelpful: unhelpful,
     },
     charts: {
+      complaintsByStatus: complaintStatus.map((row) => ({ status: row.status, count: row._count._all })),
       signupsPerDay,
       registrationsPerWeek,
       complaintResolution: resolution[0] ?? { resolved: 0, avgHours: null, medianHours: null },

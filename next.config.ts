@@ -38,7 +38,7 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   poweredByHeader: false,
   experimental: {
-    optimizePackageImports: ["lucide-react", "date-fns"],
+    optimizePackageImports: ["lucide-react"],
   },
   // Native/dynamic-require packages must stay external to the server bundle.
   serverExternalPackages: ["image-video-compressor", "fluent-ffmpeg", "ffmpeg-static", "ffprobe-static"],

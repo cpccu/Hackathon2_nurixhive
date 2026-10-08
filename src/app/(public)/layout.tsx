@@ -1,6 +1,8 @@
 import { type ReactNode, Suspense } from "react";
+import { SiteBanner } from "@/components/layout/site-banner";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
+import { ChatbotLauncher } from "@/components/shared/chatbot/chatbot-launcher";
 import { Logo } from "@/components/shared/logo";
 
 /** Static stand-in while the header (which reads the pathname) streams in. */
@@ -17,6 +19,9 @@ function HeaderFallback() {
 export default function PublicLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col">
+      <Suspense fallback={null}>
+        <SiteBanner />
+      </Suspense>
       <Suspense fallback={<HeaderFallback />}>
         <SiteHeader />
       </Suspense>
@@ -24,6 +29,7 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
         {children}
       </main>
       <SiteFooter />
+      <ChatbotLauncher />
     </div>
   );
 }

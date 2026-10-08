@@ -821,3 +821,11 @@ model UploadedFile {
   @@index([uploadedById, createdAt])
   @@index([kind, createdAt])
 }
+
+/// Single-row site configuration (key = "site"): banner message and maintenance switch.
+model SiteSetting {
+  key         String   @id @db.VarChar(32)
+  value       Json
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+}

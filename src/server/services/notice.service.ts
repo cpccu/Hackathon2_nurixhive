@@ -55,6 +55,21 @@ async function verifyAttachment(actor: AuthUser, url: string | null | undefined)
  * batches, so large departments don't slow the admin request. Global notices
  * (no department/course) are not fanned out - they appear on the board.
  */
+async function countNoticeRecipients(notice: { departmentId: string | null; courseId: string | null; createdById: string }): Promise<number> {
+  if (!notice.departmentId && !notice.courseId) return 0;
+  const rows = await prisma.$queryRaw<Array<{ count: number }>>`
+    SELECT count(*)::int AS count FROM "User" u
+    WHERE u."isActive" AND u."deletedAt" IS NULL AND u.id <> ${notice.createdById}
+      AND (
+        (${notice.departmentId}::text IS NOT NULL AND u."departmentId" = ${notice.departmentId})
+        OR EXISTS (
+          SELECT 1 FROM "Follow" f WHERE f."userId" = u.id AND (
+            (f."targetType" = 'DEPARTMENT' AND f."targetId" = ${notice.departmentId})
+            OR (f."targetType" = 'COURSE' AND f."targetId" = ${notice.courseId})))
+      )`;
+  return rows[0]?.count ?? 0;
+}
+
 function fanOutNotice(notice: { id: string; title: string; category: string; departmentId: string | null; courseId: string | null; createdById: string }) {
   if (!notice.departmentId && !notice.courseId) return;
   after(async () => {
@@ -116,7 +131,8 @@ export async function createNotice(actor: AuthUser, input: CreateNoticeInput, re
   revalidateNotices(notice.id);
   revalidateKnowledgeBase();
   fanOutNotice({ ...notice, createdById: actor.id });
-  return notice;
+  const recipients = await countNoticeRecipients({ ...notice, createdById: actor.id });
+  return { ...notice, recipients };
 }
 
 async function findNotice(id: string) {

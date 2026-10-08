@@ -50,8 +50,7 @@ export function SearchTrigger({ className, compact }: { className?: string; comp
       aria-label="Search CampusOS (Ctrl+K)"
     >
       <Search className="size-4" />
-      <span className="flex-1 truncate text-left">Search events, notes, notices…</span>
-      <kbd className="hidden rounded-md border border-border bg-surface px-1.5 py-0.5 font-sans text-[0.7rem] font-semibold text-fg-muted lg:inline">Ctrl K</kbd>
+      <span className="flex-1 truncate text-left">Search…</span>
     </button>
   );
 }

@@ -21,10 +21,20 @@ function withStrictSsl(connectionString: string): string {
   return url.toString();
 }
 
+/**
+ * Neon suspends idle computes; the first connection after a pause can take several
+ * seconds. Generous connect/transaction waits turn that into one slow request instead
+ * of a P2028 "Unable to start a transaction in the given time" failure. The pool is
+ * small per instance because PgBouncer (the pooled URL) fans connections in.
+ */
+const POOL = { max: isProduction ? 5 : 10, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 15_000, keepAlive: true } as const;
+const TRANSACTION = { maxWait: 15_000, timeout: 20_000 } as const;
+
 function createPrismaClient(): PrismaClient {
-  const adapter = new PrismaPg({ connectionString: withStrictSsl(env.DATABASE_URL) });
+  const adapter = new PrismaPg({ connectionString: withStrictSsl(env.DATABASE_URL), ...POOL });
   return new PrismaClient({
     adapter,
+    transactionOptions: TRANSACTION,
     log: isProduction ? ["error"] : ["warn", "error"],
   });
 }

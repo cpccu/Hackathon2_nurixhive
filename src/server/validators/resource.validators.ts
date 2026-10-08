@@ -71,6 +71,18 @@ export const reviewResourceSchema = z
     path: ["reason"],
   });
 
+export const bulkReviewSchema = z
+  .object({
+    ids: z.array(idSchema).min(1).max(50),
+    decision: z.enum(["APPROVE", "REJECT"]),
+    reason: z.string().trim().min(3).max(500).optional(),
+  })
+  .strict()
+  .refine((value) => value.decision === "APPROVE" || value.reason, {
+    message: "A reason is required when rejecting.",
+    path: ["reason"],
+  });
+
 export const adminResourceListQuerySchema = z
   .object({
     status: z.enum(ModerationStatus).default("PENDING"),
