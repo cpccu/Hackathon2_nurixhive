@@ -62,7 +62,9 @@ async function postToBrevo(payload: string, tag: string): Promise<SendEmailResul
         const body = (await response.json().catch(() => ({}))) as { messageId?: string };
         return { ok: true, messageId: body.messageId };
       }
-      reason = `brevo_status_${response.status}`;
+      // Brevo's error text (e.g. "unrecognised IP address") says why; it never echoes the email body.
+      const failure = (await response.json().catch(() => ({}))) as { message?: string };
+      reason = `brevo_status_${response.status}${failure.message ? `: ${failure.message.slice(0, 200)}` : ""}`;
       if (!isRetryableStatus(response.status)) break;
     } catch (error) {
       reason = error instanceof Error && error.name === "TimeoutError" ? "timeout" : "network_error";

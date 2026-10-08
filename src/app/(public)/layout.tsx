@@ -1,5 +1,6 @@
 import { type ReactNode, Suspense } from "react";
 import { SiteBanner } from "@/components/layout/site-banner";
+import { PublicTabBar } from "@/components/layout/public-tab-bar";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
 import { ChatbotLauncher } from "@/components/shared/chatbot/chatbot-launcher";
@@ -18,7 +19,7 @@ function HeaderFallback() {
 
 export default function PublicLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="flex min-h-dvh flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0">
       <Suspense fallback={null}>
         <SiteBanner />
       </Suspense>
@@ -30,6 +31,9 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
       </main>
       <SiteFooter />
       <ChatbotLauncher />
+      <Suspense fallback={null}>
+        <PublicTabBar />
+      </Suspense>
     </div>
   );
 }

@@ -110,8 +110,8 @@ function Hero() {
       <div className="bg-mesh absolute inset-0 -z-20" aria-hidden />
       <div className="bg-grid absolute inset-0 -z-10 opacity-60" aria-hidden />
       <div className="grain absolute inset-0 -z-10" aria-hidden />
-      <div className="container-app grid items-center gap-12 lg:grid-cols-[1.15fr_0.85fr]">
-        <div className="max-w-3xl">
+      <div className="container-app grid grid-cols-1 items-center gap-12 lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="min-w-0 max-w-3xl">
           <p className="glass inline-flex animate-fade-up items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold text-fg-muted shadow-sm sm:text-sm">
             <Sparkles className="size-4 text-saffron" aria-hidden /> Built for City University students
           </p>

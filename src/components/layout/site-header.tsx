@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { isActivePath, PUBLIC_NAV, SECONDARY_NAV } from "@/components/layout/nav-config";
+import { OPEN_MENU_EVENT } from "@/components/layout/public-tab-bar";
 import { UserMenu } from "@/components/layout/user-menu";
 import { useAuth } from "@/components/providers/auth-provider";
 import { SearchTrigger } from "@/components/shared/command-palette-trigger";
@@ -20,6 +21,12 @@ export function SiteHeader() {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const open = () => setDrawerOpen(true);
+    window.addEventListener(OPEN_MENU_EVENT, open);
+    return () => window.removeEventListener(OPEN_MENU_EVENT, open);
+  }, []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -62,7 +69,7 @@ export function SiteHeader() {
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}
-            className="grid size-10 place-items-center rounded-xl text-fg-muted transition hover:bg-surface-2 hover:text-fg xl:hidden"
+            className="grid size-10 place-items-center rounded-xl text-fg-muted transition hover:bg-surface-2 hover:text-fg max-md:hidden xl:hidden"
             aria-label="Open menu"
             aria-expanded={drawerOpen}
           >
